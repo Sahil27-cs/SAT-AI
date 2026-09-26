@@ -50,6 +50,14 @@ if str(_HERE) not in sys.path:
 import httpx  # noqa: E402
 from fastapi import FastAPI, HTTPException, Query, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+
+# Imported at module level ON PURPOSE. Vercel's Python builder traces
+# imports statically to decide what to bundle, and an import inside a
+# function body is invisible to it -- gemini.py simply was not deployed, and
+# /health reported "No module named 'gemini'" at request time. `gemini` does
+# not import this module, so there is no cycle; `satai_agents` does, which is
+# why that one stays lazy and is covered by includeFiles in vercel.json.
+from gemini import describe_configuration  # noqa: E402
 from pydantic import BaseModel, Field, ValidationError  # noqa: E402
 
 log = logging.getLogger("satai.api")
@@ -464,18 +472,11 @@ async def health() -> dict[str, Any]:
         checks["database"] = "ok"
     except HTTPException as exc:
         checks["database"] = f"unavailable ({exc.status_code})"
-    # Imported lazily: /health must answer even if the agent module fails to
-    # import, because "the agent is broken" is exactly what it exists to report.
-    try:
-        from gemini import describe_configuration
-
-        llm = describe_configuration()
-        checks["llm"] = "configured" if llm["configured"] else "not_configured"
-        checks["llm_provider"] = llm["provider"]
-        if llm["model"]:
-            checks["llm_model"] = llm["model"]
-    except ImportError as exc:  # pragma: no cover - deployment fault
-        checks["llm"] = f"unavailable ({exc})"
+    llm = describe_configuration()
+    checks["llm"] = "configured" if llm["configured"] else "not_configured"
+    checks["llm_provider"] = llm["provider"]
+    if llm["model"]:
+        checks["llm_model"] = llm["model"]
     checks["study_areas"] = str(len(study_areas()))
     checks["audit_log"] = "enabled" if os.environ.get("SUPABASE_SERVICE_KEY") else "disabled"
     return {
