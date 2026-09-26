@@ -501,6 +501,37 @@ button.ghost {
 }
 button.ghost:hover { border-color: var(--accent-dim); color: var(--fg); }
 
+/* ---------- contributions ---------- */
+
+.contrib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.contrib {
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 7px;
+  background: var(--panel-2);
+  padding: 13px;
+}
+.contrib.ready { border-left-color: var(--obs); }
+.contrib.blocked { border-left-color: var(--index); }
+.contrib.not-trained { border-left-color: var(--fg-faint); }
+.contrib-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.contrib-head code { font-size: 14px; font-weight: 700; color: var(--accent); }
+.contrib-what { font-size: 13px; font-weight: 550; margin-top: 7px; line-height: 1.4; }
+.contrib-result {
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  line-height: 1.55;
+  margin: 10px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid var(--line-soft);
+}
+.status-pill.not-trained { color: var(--fg-faint); }
+
 /* ---------- region selector ---------- */
 
 .region-grid {

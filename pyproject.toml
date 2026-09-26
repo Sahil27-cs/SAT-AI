@@ -142,6 +142,12 @@ module = [
     # type check for everyone.
     "sklearn.*",
     "scipy.*",
+    # Training-only, and deliberately absent from the serving environment: the
+    # flood model is trained on a GPU box and exported to ONNX for CPU serving
+    # (ADR-001). `satai.ml.unet` imports them lazily so the module stays
+    # importable without them, which is what lets CI check it at all.
+    "torch.*",
+    "segmentation_models_pytorch.*",
 ]
 ignore_missing_imports = true
 

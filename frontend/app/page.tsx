@@ -394,6 +394,64 @@ function Assistant({ regions, region }: { regions: Region[]; region: string }) {
 
 // --- research ---
 
+/**
+ * C1–C4 with the state each is actually in and what gates it.
+ *
+ * `result` is the load-bearing field: for anything not executed it names the
+ * blocker rather than leaving a blank, because a blank reads as "coming soon"
+ * and a named blocker reads as a research register. Only C4 carries numbers,
+ * because C4 is the only one that has run.
+ */
+const CONTRIB_DETAIL: {
+  id: string; what: string; state: 'ready' | 'blocked' | 'not-trained';
+  label: string; dataset: string; instrument: string; metric: string; result: string;
+}[] = [
+  {
+    id: 'C1',
+    what: 'Measured grounding of an agent layer over Earth-observation outputs',
+    state: 'blocked',
+    label: 'INSTRUMENT READY · NOT RUN',
+    dataset: 'Versioned 28-question benchmark; ~1/3 must be refused',
+    instrument: 'Grounding validator — 4 checks, scored at 100% over 15 labelled cases in experiment 9a',
+    metric: 'Grounding-violation rate, tool-invocation accuracy, refusal correctness, latency',
+    result:
+      'Not executed. Needs ANTHROPIC_API_KEY on the deployment. The validator, the benchmark and the chat_turns audit log that would hold the results all exist; the deployed validator is now parity-tested against the scored one.',
+  },
+  {
+    id: 'C2',
+    what: 'Quantified degradation under modality loss',
+    state: 'not-trained',
+    label: 'NOT EXECUTED',
+    dataset: 'Sen1Floods11, band presets sar_only → full',
+    instrument: 'Modality ablation over the flood segmentation model',
+    metric: 'IoU, Dice, F1, precision, recall per band stack',
+    result:
+      'Not executed. Depends on a trained flood model, which does not exist — the Sen1Floods11 archive is not retrievable from the build environment and training needs a GPU. The band presets the ablation sweeps are defined and tested.',
+  },
+  {
+    id: 'C3',
+    what: 'Quantified rural → urban domain-transfer gap for SAR flood segmentation',
+    state: 'not-trained',
+    label: 'NOT EXECUTED',
+    dataset: 'Train on rural Ganga plain; evaluate on Mumbai MMR',
+    instrument: 'Region-disjoint evaluation (ADR-009)',
+    metric: 'IoU gap between source and urban target, with a confidence interval',
+    result:
+      'Not executed. Same blocker as C2. The leave-one-region-out split machinery, the leakage guard and the segmentation metrics are implemented and tested.',
+  },
+  {
+    id: 'C4',
+    what: 'Reproducible, sensitivity-analysed multi-hazard risk implementation',
+    state: 'ready',
+    label: 'EXECUTED',
+    dataset: 'Synthetic hazard/exposure/vulnerability fields over the exponent grid',
+    instrument: 'Risk engine + exponent sweep',
+    metric: 'Spearman rho of the ranking; share of cells changing colour band',
+    result:
+      'Executed. The exponents barely change which places rank riskiest — Spearman rho never falls below 0.957 — but move up to 18.7% of cells between colour bands. So a ranking may be reported with confidence and a cell’s band may not, a distinction that exists only because the analysis was run.',
+  },
+];
+
 function Research({ experiments }: { experiments: Experiment[] }) {
   const complete = experiments.filter((e) => e.status === 'complete');
   const pending = experiments.filter((e) => e.status !== 'complete');
@@ -407,15 +465,28 @@ function Research({ experiments }: { experiments: Experiment[] }) {
         <strong>measurement</strong>, not architecture.
       </p>
 
+      {/* Status, dataset, model and the reason each one is where it is. A
+          contribution that has not run says so and says what is blocking it —
+          the alternative is a table of four rows that all look equally ready. */}
       <div className="panel">
-        <div className="panel-title">Contributions</div>
-        <table>
-          <thead><tr><th>ID</th><th>Contribution</th><th>Status</th></tr></thead>
-          <tbody>{CONTRIBUTIONS.map(([id, what, status]) => (
-            <tr key={id}><td><code>{id}</code></td><td>{what}</td>
-              <td style={status === 'EXECUTED' ? { color: 'var(--obs)', fontWeight: 600 } : undefined}>{status}</td></tr>))}
-          </tbody>
-        </table>
+        <div className="panel-title">Contributions C1–C4</div>
+        <div className="contrib-grid">
+          {CONTRIB_DETAIL.map((c) => (
+            <div key={c.id} className={`contrib ${c.state}`}>
+              <div className="contrib-head">
+                <code>{c.id}</code>
+                <span className={`status-pill ${c.state}`}>{c.label}</span>
+              </div>
+              <div className="contrib-what">{c.what}</div>
+              <dl className="kv" style={{ marginTop: 8 }}>
+                <div><dt>Dataset</dt><dd>{c.dataset}</dd></div>
+                <div><dt>Instrument</dt><dd>{c.instrument}</dd></div>
+                <div><dt>Metric</dt><dd>{c.metric}</dd></div>
+              </dl>
+              <p className="contrib-result">{c.result}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="panel">
