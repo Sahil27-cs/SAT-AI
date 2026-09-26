@@ -62,7 +62,6 @@ NEEDED_LATER = [
     ("ee", "Phase 2 - Earth Engine"),
     ("fastapi", "Phase 9"),
     ("sqlalchemy", "Phase 9"),
-    ("anthropic", "Phase 11 - agents"),
     # `langgraph` was listed here as a Phase 11 requirement and is not imported
     # anywhere in the project: routing is a weighted keyword scorer that must
     # work with no API key at all (requirement 39), and a graph framework buys

@@ -65,8 +65,13 @@ class ToolSpec:
     hazards: tuple[str, ...] = ()
     agents: tuple[str, ...] = ()
 
-    def to_anthropic_schema(self) -> dict[str, Any]:
-        """Anthropic tool-use schema for this tool."""
+    def to_function_declaration(self) -> dict[str, Any]:
+        """Function-declaration schema for this tool.
+
+        The shape -- name, description, JSON-Schema parameters -- is shared by
+        Gemini, OpenAI and Anthropic tool calling, so it is named for what it
+        is rather than for whichever provider the serving plane currently uses.
+        """
         return {
             "name": self.name,
             "description": self.description,

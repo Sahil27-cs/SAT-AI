@@ -26,18 +26,21 @@ def test_defaults_are_usable_without_any_env() -> None:
     settings = Settings()
     assert settings.env is Environment.DEVELOPMENT
     assert settings.log_level == "INFO"
-    assert settings.llm.model == "claude-opus-5"
+    assert settings.llm.model.startswith("gemini-")
 
 
-def test_verified_model_identifiers() -> None:
-    """Model IDs were checked against the live Anthropic docs, not guessed.
+def test_the_default_model_is_a_gemini_identifier() -> None:
+    """A weak assertion on purpose.
 
-    If this test fails after a docs change, re-verify rather than editing the
-    expectation to match whatever the code says.
+    Pinning an exact model name here would make this test fail every time
+    Google retires one, which is not a defect in this repository and not
+    something a unit test can verify offline. GEMINI_MODEL is configurable and
+    `scripts/check_env.py` lists what the configured key can actually reach;
+    that is where a stale identifier gets caught.
     """
     llm = LLMSettings()
-    assert llm.model == "claude-opus-5"
-    assert llm.router_model == "claude-haiku-4-5-20251001"
+    assert llm.provider == "google"
+    assert llm.model.startswith("gemini-")
 
 
 def test_api_key_is_a_secret_and_does_not_leak_in_repr() -> None:
@@ -50,7 +53,7 @@ def test_api_key_is_a_secret_and_does_not_leak_in_repr() -> None:
     realism bought nothing and cost a red pipeline.
     """
     sentinel = "unit-test-value-that-must-not-appear-in-repr"
-    llm = LLMSettings(ANTHROPIC_API_KEY=sentinel)  # type: ignore[call-arg]
+    llm = LLMSettings(GEMINI_API_KEY=sentinel)  # type: ignore[call-arg]
     assert sentinel not in repr(llm)
     assert sentinel not in str(llm)
     assert isinstance(llm.api_key, SecretStr)
@@ -59,14 +62,23 @@ def test_api_key_is_a_secret_and_does_not_leak_in_repr() -> None:
 
 def test_llm_is_not_configured_without_a_key() -> None:
     """Drives graceful degradation: no key means no agent layer, not a crash."""
-    assert LLMSettings(ANTHROPIC_API_KEY=None).is_configured is False  # type: ignore[call-arg]
-    assert LLMSettings(ANTHROPIC_API_KEY="").is_configured is False  # type: ignore[call-arg]
-    assert LLMSettings(ANTHROPIC_API_KEY="sk-ant-x").is_configured is True  # type: ignore[call-arg]
+    assert LLMSettings(GEMINI_API_KEY=None).is_configured is False  # type: ignore[call-arg]
+    assert LLMSettings(GEMINI_API_KEY="").is_configured is False  # type: ignore[call-arg]
+    assert LLMSettings(GEMINI_API_KEY="a-test-key").is_configured is True  # type: ignore[call-arg]
+
+
+def test_the_tool_round_budget_is_bounded() -> None:
+    """A confused turn must not loop until the serverless function times out."""
+    assert LLMSettings().max_tool_rounds == 3
+    with pytest.raises(ValidationError):
+        LLMSettings(GEMINI_MAX_TOOL_ROUNDS=0)  # type: ignore[call-arg]
+    with pytest.raises(ValidationError):
+        LLMSettings(GEMINI_MAX_TOOL_ROUNDS=50)  # type: ignore[call-arg]
 
 
 def test_temperature_bounds() -> None:
     with pytest.raises(ValidationError):
-        LLMSettings(ANTHROPIC_TEMPERATURE=2.5)  # type: ignore[call-arg]
+        LLMSettings(GEMINI_TEMPERATURE=5.0)  # type: ignore[call-arg]
 
 
 def test_log_level_is_validated_and_normalised() -> None:

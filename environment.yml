@@ -101,7 +101,10 @@ dependencies:
       - openeo==0.32.0
       - cdsapi==0.7.3
 
-      # Agent layer.
+      # Agent layer. The serving plane talks to Gemini over its REST API
+      # with httpx rather than through google-genai: the Vercel function has
+      # a bundle-size budget and three runtime dependencies, and an SDK to
+      # issue one POST would be the largest thing in the deployment.
       #
       # LangGraph and the LangChain packages were pinned here and never
       # imported. Routing is a weighted keyword scorer with a deterministic
@@ -111,7 +114,6 @@ dependencies:
       # an upgrade treadmill for three agents and nine tools. Removed rather
       # than left in place: an unused pin is a claim about the architecture
       # that the code does not support. See the status note in ADR-001.
-      - anthropic==0.40.0
 
       # API extras
       - geoalchemy2==0.15.2

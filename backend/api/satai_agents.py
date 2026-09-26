@@ -1,41 +1,50 @@
-"""Agent plane for the deployed serving layer.
+"""Agent plane for the deployed serving layer, on Google Gemini.
 
-A deliberately small, dependency-light mirror of ``satai.agents`` so the
-serverless bundle stays inside its size budget. The behavioural contract is the
-same one the research code enforces and the benchmark measures:
+A tool-using geospatial agent, not a chatbot. Gemini receives function
+declarations, decides which SAT-AI tools to call, receives their results, and
+writes an answer from them. It may also move the map, which it does by calling
+``show_on_map`` rather than by describing what the user should click.
+
+The behavioural contract is the one the benchmark measures:
 
 * values come from tools, never from the model;
 * observations and model outputs stay distinct;
 * the system refuses what it has no authority or capability to answer;
-* when the LLM is unreachable the endpoint degrades to structured tool output
-  and says so, rather than failing or inventing prose (requirement 39).
+* when the language layer is unreachable the endpoint degrades to structured
+  tool output and says so, rather than failing or inventing prose (req. 39).
 
-The heuristic router runs unconditionally. Routing with the LLM is an
-optimisation; routing *without* it is what keeps the interface usable when the
-agent plane is down.
+**Refusals are checked before any tool call and before any model call.** A
+refusal must not depend on a database lookup or an API round trip succeeding:
+the case where the system is degraded is exactly the case where someone might
+be asking whether to evacuate.
 
-**On the grounding check, and why it is no longer a weaker one.** This module
-used to validate only that numbers were traceable, while
-``satai.agents.grounding`` -- the validator scored in experiment 9a and reported
-as the C1 instrument -- also checked fabricated authority, observation/prediction
-confusion and dropped critical caveats. So the measurement described in the
-paper was not the measurement running in production, and the deployed check was
-the weaker of the two in exactly the categories that matter most: an invented
-helpline is worse than an invented number. The four checks are now ported here
-in full, with the same constants and the same semantics, and
-``tests/test_grounding_parity.py`` runs both implementations over a shared
-corpus and fails if their verdicts diverge. That test is the thing keeping this
-file honest; porting without it would just restart the drift.
+**On the grounding check.** This module used to validate only that numbers were
+traceable, while ``satai.agents.grounding`` -- the validator scored in
+experiment 9a -- also checked fabricated authority, observation/prediction
+confusion and dropped caveats. The measurement reported for C1 was therefore
+made by a stricter instrument than the one in front of users. All four checks
+are implemented here with the same constants and semantics, and
+``tests/test_grounding_parity.py`` runs both over a shared corpus and fails if
+their verdicts diverge.
 """
 
 from __future__ import annotations
 
-import os
 import re
 import time
 from typing import TYPE_CHECKING, Any
 
-import httpx
+from agent_tools import TOOL_DECLARATIONS, execute_tool, groundable_values
+from gemini import (
+    GeminiError,
+    GeminiNotConfigured,
+    call_gemini,
+    describe_configuration,
+    is_configured,
+    model_turn,
+    tool_turn,
+    user_turn,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from index import ChatRequest, ChatResponse
@@ -46,38 +55,55 @@ DISCLAIMER = (
     "or State Disaster Management Authority advisories."
 )
 
-ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5")
-ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+#: How many times the model may call tools before it must answer. Three covers
+#: the realistic chains (move the map, fetch a result, fetch the model card)
+#: without letting a confused turn loop until the function times out.
+MAX_TOOL_ROUNDS = 3
 
-#: Fallback study-area list for the degraded answer, used only when the
-#: catalogue lookup that would supply the real ones has itself failed.
-FALLBACK_REGIONS = ("bihar_ganga", "mumbai_mmr", "assam_brahmaputra", "kerala_periyar")
+FALLBACK_REGIONS = (
+    "bihar_ganga",
+    "mumbai_mmr",
+    "assam_brahmaputra",
+    "kerala_periyar",
+    "nepal_koshi_terai",
+    "odisha_mahanadi",
+    "uttarakhand_kumaon",
+)
 
 SYSTEM_PROMPT = """\
-You are an analyst interface to SAT-AI, a student research prototype that
-assesses multi-hazard risk from satellite remote sensing over a small number of
-configured study areas in India.
+You are the analyst interface to SAT-AI, a student research prototype that
+assesses multi-hazard risk from satellite remote sensing over configured study
+areas in India and Nepal.
+
+You have tools. Use them. Never answer a question about SAT-AI's data, models
+or regions from your own knowledge -- call the tool and answer from what it
+returns.
 
 ABSOLUTE RULES
-1. Every project-specific number must come from the TOOL RESULTS given to you.
-   If a quantity is not there, say it is not available. Never estimate it.
-2. Keep observations and model outputs distinct. FIRMS detections are
-   MEASUREMENTS at overpass time. Flood extent is a MODEL OUTPUT. A risk index
-   is a composite INDEX. None of them is a forecast.
-3. SAT-AI does not forecast: no earthquake prediction, no cyclone track, no
+1. Every project-specific number must come from a tool result in this turn. If
+   a tool did not return a quantity, say plainly that it is not available.
+   Never estimate, interpolate, or recall a number from general knowledge.
+2. When a tool returns available=false, report that. Say DATA UNAVAILABLE or
+   MODEL RESULT NOT COMPUTED and give the reason the tool gave. Do not
+   substitute a plausible value and do not apologise at length.
+3. Keep observations and model outputs distinct. A FIRMS thermal anomaly is a
+   MEASUREMENT at overpass time. A flood extent is a MODEL OUTPUT. A risk index
+   is a documented COMPOSITE INDEX. None of them is a forecast.
+4. SAT-AI does not forecast: no earthquake prediction, no cyclone track, no
    wildfire ignition, no flood timing or depth. Say so if asked.
-4. Risk levels are prototype research outputs, NOT official warnings. Say this
+5. Risk levels are prototype research outputs, NOT official warnings. Say this
    whenever you report one. Official warnings come from IMD, NDMA and State
    Disaster Management Authorities.
-5. Never invent an emergency phone number, an evacuation order, an official
+6. Never invent an emergency phone number, an evacuation order, an official
    advisory, or the status of any government warning.
-6. SAT-AI is not real-time. Sentinel-1 revisit is 6-12 days. Report data age.
-7. If a region is not covered, say so rather than estimating from general
-   knowledge.
+7. SAT-AI is not real-time. Sentinel-1 revisit is 6-12 days. Report data age.
 8. Carry through the caveats attached to tool results. They are part of the
    answer, not optional decoration.
+9. When the user asks to see, show or zoom to something, call show_on_map. Do
+   not tell them which button to press.
+
 Be concise. State what the data shows, what it does not, and how confident the
-model is."""
+model is. Uncertainty is information, not a weakness."""
 
 # --- routing ---------------------------------------------------------------
 
@@ -126,15 +152,14 @@ _HAZARD_TERMS = {
     "damage": ("damage", "destroyed", "collapsed"),
 }
 
-#: Questions SAT-AI must decline, with the reason. Checked before any tool call:
-#: a refusal should not depend on a database lookup succeeding.
+#: Questions SAT-AI must decline, with the reason.
 #:
-#: **Order is load-bearing.** The first match wins, so hazard-specific rules come
-#: before the generic timing rule. Without that ordering, "will there be an
+#: **Order is load-bearing.** The first match wins, so hazard-specific rules
+#: come before the generic timing rule. Without that ordering, "will there be an
 #: earthquake next month" matches the flood-timing rule first and the user is
-#: told about flood susceptibility — a fluent answer to a question they did not
-#: ask, and one that omits the only thing that matters, which is that SAT-AI
-#: performs no earthquake prediction at all.
+#: told about flood susceptibility -- a fluent answer to a question they did not
+#: ask, omitting the only thing that matters, which is that SAT-AI performs no
+#: earthquake prediction at all.
 _REFUSALS: tuple[tuple[str, str], ...] = (
     (
         r"\b(should|must|do)\s+(we|i|they|residents|people).{0,20}evacuat|evacuat\w*\s*\?",
@@ -143,9 +168,6 @@ _REFUSALS: tuple[tuple[str, str], ...] = (
         "your State Disaster Management Authority and local administration.",
     ),
     (
-        # Indian emergency numbers are short and are asked for in many ways.
-        # "what number should I call" is the phrasing most likely to draw an
-        # invented helpline out of a language model, so it is matched explicitly.
         r"\b(helpline|emergency (number|contact)|phone number|contact number)\b|"
         r"\b(who|whom|what|which)\b[^?.]{0,30}\bnumber\b[^?.]{0,20}\bcall\b|"
         r"\b(who|whom)\s+(should|do|can|would)\s+i\s+(call|contact)\b|"
@@ -190,8 +212,6 @@ _REFUSALS: tuple[tuple[str, str], ...] = (
         "and generating a figure without it would be fabrication.",
     ),
     (
-        # Generic timing, checked last so a hazard-specific rule above can claim
-        # the query first and give the reason that actually applies to it.
         r"\b(will it|is it going to|when will).{0,30}(flood|rain|burn)\b|"
         r"\bnext (week|month|day|year)\b",
         "SAT-AI does not forecast hazard timing or occurrence. For flooding it "
@@ -227,15 +247,12 @@ def check_refusal(query: str) -> str | None:
 
 # --- grounding -------------------------------------------------------------
 #
-# Ported from satai.agents.grounding. The constants below are duplicated rather
-# than imported because importing the research package would pull pydantic-
-# settings and numpy into a serverless bundle that has a size budget. The price
-# of that duplication is drift, and the mechanism that pays it is
-# tests/test_grounding_parity.py, which asserts both implementations agree.
+# Ported from satai.agents.grounding. Constants are duplicated rather than
+# imported because importing the research package would pull pydantic-settings
+# and numpy into a serverless bundle with a size budget. The price of that
+# duplication is drift; the mechanism that pays it is
+# tests/test_grounding_parity.py.
 
-#: Numbers with optional thousands separators, decimals, percentages and signs.
-#: The suffix group is what makes the exemption table safe: "7" on its own is
-#: rhetorical, "7 days" is a claim about the world.
 _NUMBER_RE = re.compile(
     r"""(?<![\w.])
     (?P<value>
@@ -248,14 +265,12 @@ _NUMBER_RE = re.compile(
     re.VERBOSE | re.IGNORECASE,
 )
 
-#: Small integers used rhetorically ("three factors") and 100 for percentages.
-#: Exempt ONLY when bare. Previously these were exempt unconditionally, so
-#: "flooding lasted 7 days" passed the deployed check and failed the validated
-#: one -- a fabricated duration reported as fact.
+#: Exempt ONLY when bare. These were once exempt unconditionally, so "flooding
+#: lasted 7 days" passed the deployed check and failed the validated one -- a
+#: fabricated duration reported as fact.
 _EXEMPT_EXACT = frozenset({0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 100.0})
 _YEAR_RANGE = (1900.0, 2100.0)
 
-#: Contexts in which a number is structural rather than a claim about the world.
 _STRUCTURAL_CONTEXT = re.compile(
     r"(sentinel[\s-]?|landsat[\s-]?|modis[\s-]?|viirs[\s-]?|noaa[\s-]?|"
     r"era|gpm|epsg:?\s?|adr[\s-]?|phase\s|step\s|band\s|figure\s|table\s|"
@@ -263,9 +278,6 @@ _STRUCTURAL_CONTEXT = re.compile(
     re.IGNORECASE,
 )
 
-#: Phrases that assert official status. The system is a research prototype; it
-#: has no authority to issue any of these, so they are hard failures and are
-#: never regenerated.
 _FABRICATED_AUTHORITY = (
     r"\bevacuat(e|ion)\s+(order|notice|is\s+(?:now\s+)?(?:in\s+effect|mandatory))",
     r"\bofficial\s+(warning|alert|advisory)\s+(has been|is)\s+issued",
@@ -286,8 +298,6 @@ _NEGATION_RE = re.compile(
 )
 _SENTENCE_BREAK_RE = re.compile(r"[.!?;]\s|\n")
 
-#: Critical caveat classes: the trigger that identifies one in a tool result,
-#: and the phrases that count as carrying it through into the answer.
 _CRITICAL_CAVEATS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
     (
         "official_warning",
@@ -346,20 +356,16 @@ def _is_exempt(value: float, suffix: str | None, context: str) -> bool:
 def _is_negated(text: str, start: int) -> bool:
     """Whether the term at ``start`` sits inside a negation.
 
-    Scoped to the sentence, not a fixed window: "not predictions of where a fire
-    will occur" is an ordinary way to draw the distinction correctly, and the
-    term that matches is at the far end of it.
+    Scoped to the sentence: "not predictions of where a fire will occur" is an
+    ordinary way to draw the distinction correctly, and the matching term sits
+    at the far end of it.
     """
     breaks = [m.end() for m in _SENTENCE_BREAK_RE.finditer(text[:start])]
     return bool(_NEGATION_RE.search(text[breaks[-1] if breaks else 0 : start]))
 
 
 def validate_grounding(response: str, allowed: list[float]) -> tuple[bool, list[str]]:
-    """Reject any number not traceable to a tool result. Tolerance 2 %.
-
-    Returns ``(grounded, ungrounded_raw_values)``. This is the numeric check
-    only; :func:`validate_response` adds the three categorical checks.
-    """
+    """Reject any number not traceable to a tool result. Tolerance 2 %."""
     expanded = _expand_allowed(allowed)
     ungrounded: list[str] = []
     for match in _NUMBER_RE.finditer(response):
@@ -382,12 +388,7 @@ def validate_response(
     has_model: bool = False,
     caveats: list[str] | None = None,
 ) -> tuple[bool, list[tuple[str, str]]]:
-    """The full check: numbers, authority, observation/prediction, caveats.
-
-    Returns ``(grounded, [(kind, detail), ...])`` using the same violation-kind
-    vocabulary as :class:`satai.agents.grounding.ViolationKind`, so the two
-    implementations' reports are directly comparable.
-    """
+    """The full check: numbers, authority, observation/prediction, caveats."""
     violations: list[tuple[str, str]] = []
 
     _, ungrounded = validate_grounding(response, allowed)
@@ -449,120 +450,15 @@ def validate_response(
 
 
 def is_hard_failure(violations: list[tuple[str, str]]) -> bool:
-    """Fabricated authority is never regenerated — it is returned as a refusal.
+    """Fabricated authority is never regenerated -- it is returned as a refusal.
 
-    Handing an invented helpline back to the model with "try again" risks a
-    second, differently-worded invention. There is no value to recover here, so
-    the turn falls straight through to verified tool output.
+    Handing an invented helpline back with "try again" risks a second,
+    differently-worded invention. There is nothing to recover.
     """
     return any(kind == "fabricated_authority" for kind, _ in violations)
 
 
-# --- tools -----------------------------------------------------------------
-
-
-def _tool_name(hazard: str) -> str:
-    """The tool a hazard query maps to.
-
-    Previously the name appended to ``tools_called`` was computed from the
-    hazard while the result payload hardcoded ``get_flood_prediction``, so a
-    wildfire query reported one tool in its trace and a different one in its
-    provenance. Tool-invocation accuracy is a C1 metric, so a trace that does
-    not match what ran corrupts the measurement, not just the display.
-    """
-    return "get_flood_prediction" if hazard == "flood" else f"get_{hazard}_prediction"
-
-
-async def fetch_tools(
-    query_fn: Any, region: str | None, hazard: str | None
-) -> tuple[list[str], list[dict[str, Any]], list[float]]:
-    """Call the tools this query needs. Returns (names, results, allowed values)."""
-    called: list[str] = []
-    results: list[dict[str, Any]] = []
-    allowed: list[float] = []
-
-    if not region:
-        return called, results, allowed
-
-    regions = await query_fn("regions", {"select": "*", "id": f"eq.{region}"})
-    if not regions:
-        called.append("get_location_statistics")
-        results.append(
-            {
-                "tool": "get_location_statistics",
-                "available": False,
-                "message": (
-                    f"{region} is not a SAT-AI study area. The system covers only "
-                    f"its configured regions and does not estimate risk elsewhere."
-                ),
-            }
-        )
-        return called, results, allowed
-
-    info = regions[0]
-    called.append("get_location_statistics")
-    results.append(
-        {
-            "tool": "get_location_statistics",
-            "available": True,
-            "region": info["name"],
-            "area_km2": info["area_km2"],
-            "study_role": info["study_role"],
-            "source_kind": "catalogue",
-            "caveats": info.get("caveats") or [],
-        }
-    )
-    allowed.append(float(info["area_km2"]))
-
-    target = hazard or "flood"
-    tool_name = _tool_name(target)
-    rows = await query_fn(
-        "latest_hazard_results",
-        {"select": "*", "region_id": f"eq.{region}", "hazard": f"eq.{target}"},
-    )
-    called.append(tool_name)
-    if rows:
-        row = rows[0]
-        results.append(
-            {
-                "tool": tool_name,
-                "available": True,
-                "hazard": target,
-                "risk_index": row["risk_index"],
-                "risk_band": row["risk_band"],
-                "confidence": row.get("confidence"),
-                "flooded_area_km2": row.get("flooded_area_km2"),
-                "population_exposed": row.get("population_exposed"),
-                "source_kind": row.get("source_kind", "model"),
-                "scene_ids": row.get("scene_ids") or [],
-                "observed_at": row.get("observed_at"),
-                "caveats": [DISCLAIMER, *(row.get("caveats") or [])],
-            }
-        )
-        allowed += [
-            float(v)
-            for v in (
-                row["risk_index"],
-                row.get("confidence"),
-                row.get("flooded_area_km2"),
-                row.get("population_exposed"),
-            )
-            if v is not None
-        ]
-    else:
-        results.append(
-            {
-                "tool": tool_name,
-                "available": False,
-                "hazard": target,
-                "message": (
-                    f"No {target} analysis has been computed for {info['name']}. "
-                    f"SAT-AI produces results on a batch schedule tied to satellite "
-                    f"revisit; this region has no completed run."
-                ),
-            }
-        )
-    return called, results, allowed
+# --- helpers ---------------------------------------------------------------
 
 
 def _evidence(results: list[dict[str, Any]]) -> tuple[bool, bool, list[str]]:
@@ -572,15 +468,49 @@ def _evidence(results: list[dict[str, Any]]) -> tuple[bool, bool, list[str]]:
     return "observation" in kinds, "model" in kinds, caveats
 
 
+def _map_actions(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Map intents the model expressed, for the frontend to execute."""
+    return [r["map_action"] for r in results if r.get("map_action")]
+
+
+def _degraded_answer(
+    query: str, results: list[dict[str, Any]], region_ids: list[str] | None = None
+) -> str:
+    """Structured tool output, with no generated prose layered over it."""
+    lines = ["Language layer unavailable — returning verified tool output directly.", ""]
+    if not results:
+        configured = ", ".join(region_ids or FALLBACK_REGIONS)
+        lines.append(
+            f"No SAT-AI tool was called for this question. Configured study areas: {configured}."
+        )
+        return "\n".join(lines)
+
+    for result in results:
+        lines.append(f"[{result.get('_tool', 'tool')}]")
+        if not result.get("available"):
+            lines += [f"  {result.get('reason') or result.get('message', 'unavailable')}", ""]
+            continue
+        for key, value in result.items():
+            if key.startswith("_") or key in {"available", "caveats", "source_kind", "map_action"}:
+                continue
+            lines.append(f"  {key}: {value}")
+        if result.get("caveats"):
+            lines.append("  caveats:")
+            lines += [f"    - {c}" for c in result["caveats"]]
+        lines.append("")
+    return "\n".join(lines)
+
+
 # --- main entry point ------------------------------------------------------
 
 
 async def answer(request: ChatRequest) -> ChatResponse:
-    from index import ChatResponse, Provenance, _query
+    from index import ChatResponse, Provenance, _query, study_areas
 
     started = time.perf_counter()
-    agent, confidence, hazard = route(request.message)
+    agent, confidence, _hazard = route(request.message)
 
+    # Before any tool call and before any model call.
     refusal = check_refusal(request.message)
     if refusal:
         return ChatResponse(
@@ -592,185 +522,194 @@ async def answer(request: ChatRequest) -> ChatResponse:
             grounded=True,
             provenance=[],
             degraded=False,
+            map_actions=[],
             notes=[
                 "Refused by policy before any tool call: a refusal must not "
-                "depend on a database lookup succeeding."
+                "depend on a database lookup or an API round trip succeeding."
             ],
         )
 
-    region = request.region
-    known = await _query("regions", {"select": "id,name"})
-    if not region:
-        for row in known:
-            if row["id"].lower() in request.message.lower() or (
-                row["name"].split(",")[0].lower() in request.message.lower()
-            ):
-                region = row["id"]
+    areas = study_areas()
+    region_ids = [a["id"] for a in areas]
+
+    if not is_configured():
+        return ChatResponse(
+            answer=_degraded_answer(request.message, [], region_ids),
+            agent=agent,
+            route_confidence=confidence,
+            route_method="heuristic",
+            tools_called=[],
+            grounded=True,
+            provenance=[],
+            degraded=True,
+            map_actions=[],
+            notes=[
+                "GEMINI_API_KEY is not configured on this deployment, so the "
+                "language layer is unavailable. The data plane is unaffected "
+                "(requirement 39)."
+            ],
+        )
+
+    contents: list[dict[str, Any]] = [user_turn(_framed(request))]
+    called: list[str] = []
+    results: list[dict[str, Any]] = []
+    notes: list[str] = []
+    text = ""
+
+    try:
+        for round_index in range(MAX_TOOL_ROUNDS + 1):
+            allow_tools = round_index < MAX_TOOL_ROUNDS
+            text, calls, _usage = await call_gemini(
+                contents,
+                system_instruction=SYSTEM_PROMPT,
+                tools=TOOL_DECLARATIONS if allow_tools else None,
+            )
+            if not calls:
                 break
 
-    called, tool_results, allowed = await fetch_tools(_query, region, hazard)
-    region_ids = [str(r["id"]) for r in known] or list(FALLBACK_REGIONS)
+            contents.append(model_turn(text, calls))
+            for call in calls:
+                name = call.get("name", "")
+                arguments = call.get("args", {}) or {}
+                called.append(name)
+                result = await execute_tool(name, arguments, query_fn=_query, study_areas=areas)
+                result["_tool"] = name
+                results.append(result)
+                contents.append(tool_turn(name, result))
+
+            if round_index == MAX_TOOL_ROUNDS - 1:
+                notes.append(
+                    f"Tool budget of {MAX_TOOL_ROUNDS} rounds reached; the final "
+                    f"turn was generated without further tool access."
+                )
+    except GeminiNotConfigured:
+        return _degraded(
+            request,
+            agent,
+            confidence,
+            results,
+            region_ids,
+            called,
+            "GEMINI_API_KEY is not configured.",
+        )
+    except GeminiError as exc:
+        return _degraded(
+            request,
+            agent,
+            confidence,
+            results,
+            region_ids,
+            called,
+            f"{exc}; degraded to verified tool output.",
+        )
+
+    has_observation, has_model, caveats = _evidence(results)
+    allowed = groundable_values(results)
+    grounded, violations = validate_response(
+        text,
+        allowed,
+        has_observation=has_observation,
+        has_model=has_model,
+        caveats=caveats,
+    )
+
+    if not grounded:
+        summary = "; ".join(f"[{k}] {d}" for k, d in violations[:5])
+        if is_hard_failure(violations):
+            notes.append(f"Hard failure, not regenerated: {summary}")
+            text = _degraded_answer(request.message, results, region_ids) + (
+                "\n\n[The language layer asserted authority SAT-AI does not have; "
+                "returning verified tool output instead.]"
+            )
+        else:
+            notes.append(f"Grounding violation: {summary}")
+            text = _degraded_answer(request.message, results, region_ids) + (
+                "\n\n[The language layer stated values not traceable to a tool "
+                "result; returning verified tool output instead.]"
+            )
 
     provenance = [
         Provenance(
             source_kind=r.get("source_kind", "catalogue"),
-            source_id=r["tool"],
+            source_id=r.get("_tool", "tool"),
             version="1.0.0",
             scene_ids=r.get("scene_ids") or [],
             observed_at=r.get("observed_at"),
             caveats=r.get("caveats") or [],
         )
-        for r in tool_results
+        for r in results
         if r.get("available")
     ]
 
-    if not ANTHROPIC_KEY:
-        return ChatResponse(
-            answer=_degraded_answer(request.message, region, tool_results, region_ids),
-            agent=agent,
-            route_confidence=confidence,
-            route_method="heuristic",
-            tools_called=called,
-            grounded=True,
-            provenance=provenance,
-            degraded=True,
-            notes=[
-                "No ANTHROPIC_API_KEY is configured on this deployment, so the "
-                "language layer is unavailable. This response is structured tool "
-                "output. The data plane is unaffected (requirement 39).",
-            ],
-        )
-
-    text, grounded, notes = await _generate(request.message, tool_results, allowed, region_ids)
     return ChatResponse(
         answer=text,
         agent=agent,
         route_confidence=confidence,
-        route_method="heuristic+llm",
+        route_method="gemini+tools",
         tools_called=called,
         grounded=grounded,
         provenance=provenance,
         degraded=False,
-        notes=[*notes, f"latency {time.perf_counter() - started:.2f}s"],
+        map_actions=_map_actions(results),
+        notes=[
+            *notes,
+            f"latency {time.perf_counter() - started:.2f}s",
+            f"model {describe_configuration()['model']}",
+        ],
     )
 
 
-def _degraded_answer(
-    query: str,
-    region: str | None,
-    results: list[dict[str, Any]],
-    region_ids: list[str] | None = None,
-) -> str:
-    """Structured tool output, with no generated prose layered over it."""
-    lines = ["Language layer unavailable — returning verified tool output directly.", ""]
-    if not region:
-        configured = ", ".join(region_ids or FALLBACK_REGIONS)
-        lines.append(
-            f"No SAT-AI study area was identified in your question. Configured "
-            f"regions: {configured}."
+def _framed(request: ChatRequest) -> str:
+    """The user's question, plus the region they are looking at.
+
+    The selected region is context, not an instruction: a question that names a
+    different region should still be answered about that one, so it is stated
+    as what is on screen rather than as the subject.
+    """
+    if request.region:
+        return (
+            f"{request.message}\n\n"
+            f"(The user is currently viewing the study area '{request.region}'. "
+            f"Use it only if the question does not name a different one.)"
         )
-        return "\n".join(lines)
-
-    for result in results:
-        lines.append(f"[{result['tool']}]")
-        if not result.get("available"):
-            lines += [f"  {result['message']}", ""]
-            continue
-        for key, value in result.items():
-            if key in {"tool", "available", "caveats", "source_kind"}:
-                continue
-            lines.append(f"  {key}: {value}")
-        if result.get("caveats"):
-            lines.append("  caveats:")
-            lines += [f"    - {c}" for c in result["caveats"]]
-        lines.append("")
-    return "\n".join(lines)
+    return request.message
 
 
-async def _generate(
-    query: str,
+def _degraded(
+    request: ChatRequest,
+    agent: str,
+    confidence: float,
     results: list[dict[str, Any]],
-    allowed: list[float],
-    region_ids: list[str] | None = None,
-) -> tuple[str, bool, list[str]]:
-    """Generate, validate, regenerate once on a recoverable violation."""
-    import json
+    region_ids: list[str],
+    called: list[str],
+    note: str,
+) -> ChatResponse:
+    from index import ChatResponse
 
-    has_observation, has_model, caveats = _evidence(results)
-    prompt = (
-        f"User question: {query}\n\n"
-        f"TOOL RESULTS (the only source of project-specific values):\n"
-        f"{json.dumps(results, indent=2, default=str)}\n\n"
-        f"Answer using only these values. If a quantity is not present, say it "
-        f"is unavailable. Carry through the caveats attached to the results."
+    return ChatResponse(
+        answer=_degraded_answer(request.message, results, region_ids),
+        agent=agent,
+        route_confidence=confidence,
+        route_method="degraded",
+        tools_called=called,
+        grounded=True,
+        provenance=[],
+        degraded=True,
+        map_actions=_map_actions(results),
+        notes=[note],
     )
-    notes: list[str] = []
 
-    def _fallback(reason: str) -> tuple[str, bool, list[str]]:
-        return _degraded_answer(query, "unknown", results, region_ids), True, [reason]
 
-    for attempt in range(2):
-        try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                response = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": ANTHROPIC_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": ANTHROPIC_MODEL,
-                        "max_tokens": 900,
-                        "temperature": 0.2,
-                        "system": SYSTEM_PROMPT,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-            if response.status_code >= 400:
-                return _fallback(f"LLM returned {response.status_code}; degraded to tool output.")
-            text = "".join(block.get("text", "") for block in response.json().get("content", []))
-        except (httpx.HTTPError, TimeoutError) as exc:
-            return _fallback(f"LLM unreachable ({type(exc).__name__}); degraded to tool output.")
+__all__ = [
+    "MAX_TOOL_ROUNDS",
+    "answer",
+    "check_refusal",
+    "is_hard_failure",
+    "route",
+    "validate_grounding",
+    "validate_response",
+]
 
-        grounded, violations = validate_response(
-            text,
-            allowed,
-            has_observation=has_observation,
-            has_model=has_model,
-            caveats=caveats,
-        )
-        if grounded:
-            if attempt:
-                notes.append("Regenerated once after a grounding violation.")
-            return text, True, notes
-
-        if is_hard_failure(violations):
-            # Never regenerated. See is_hard_failure.
-            detail = next(d for k, d in violations if k == "fabricated_authority")
-            return (
-                _degraded_answer(query, "unknown", results, region_ids)
-                + "\n\n[The language layer asserted authority SAT-AI does not have; "
-                "returning verified tool output instead.]",
-                False,
-                [*notes, f"Hard failure, not regenerated: fabricated authority — {detail}"],
-            )
-
-        if attempt == 0:
-            summary = "; ".join(f"[{k}] {d}" for k, d in violations[:5])
-            notes.append(f"Grounding violation on first attempt: {summary}")
-            permitted = ", ".join(f"{v:g}" for v in sorted(set(allowed))[:30])
-            prompt += (
-                f"\n\nYour previous answer had these problems: {summary}. "
-                f"Permitted values: {permitted}. Rewrite using only those values, "
-                f"carry through the caveats, and if the tools did not return a "
-                f"quantity the question asks for, say so plainly."
-            )
-
-    return (
-        _degraded_answer(query, "unknown", results, region_ids)
-        + "\n\n[The language layer produced ungrounded values twice; "
-        "returning verified tool output instead.]",
-        False,
-        [*notes, "Two grounding violations; fell back to structured output."],
-    )
+#: Re-exported so /health can report the language layer without importing the
+#: gemini module directly.
+describe_llm = describe_configuration

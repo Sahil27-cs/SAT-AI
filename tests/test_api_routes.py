@@ -103,14 +103,15 @@ class Recorder:
 def client(monkeypatch: pytest.MonkeyPatch) -> Any:
     """A client whose database returns the fixture rows above.
 
-    The Anthropic key is cleared and the agent mirror dropped from the module
+    The Gemini key is cleared and the agent mirror dropped from the module
     cache, so the chat tests exercise the documented degraded path instead of
     making a paid API call on the machine of whoever happens to have a key in
     their environment. A test suite that behaves differently depending on an
     unrelated credential is not a test suite.
     """
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
-    sys.modules.pop("satai_agents", None)
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    for module in ("satai_agents", "gemini", "agent_tools"):
+        sys.modules.pop(module, None)
 
     recorder = Recorder(
         {
@@ -374,7 +375,11 @@ def test_a_chat_turn_is_recorded_against_the_prefixed_view(
     assert row["query"] == "flood risk?"
     assert row["grounded"] is True
     assert isinstance(row["latency_ms"], int)
-    assert "get_location_statistics" in row["tools_called"]
+    # No Gemini key in the test environment, so no model runs and no tool is
+    # called. The audit row must still be written: a turn that produced a
+    # degraded answer is part of the C1 denominator, and omitting it would let
+    # the violation rate improve every time the language layer was down.
+    assert row["tools_called"] == []
 
 
 def test_an_audit_write_failure_never_fails_the_users_request(

@@ -65,21 +65,39 @@ class _Base(BaseSettings):
 
 
 class LLMSettings(_Base):
-    """Anthropic / LLM provider configuration.
+    """Google Gemini configuration for the agent plane.
 
-    Model identifiers were verified against the live Anthropic documentation on
-    2026-09-22 rather than assumed. ``claude-opus-5`` is the reasoning model;
-    a smaller model handles query routing, which is a cheap classification step
-    that does not justify frontier-model cost (ADR-005).
+    Gemini rather than a hosted Anthropic model: the agent needs native
+    function calling with a tool-result round trip, which is what makes the
+    tool-invocation accuracy reported for C1 measurable on the same channel the
+    model actually speaks.
+
+    The model identifier is configurable and the constant below is a starting
+    point, not an assumption. Model names are retired on the provider's
+    schedule, and a deployment whose account exposes a different one should not
+    need a code change -- ``scripts/check_env.py`` lists what the configured key
+    can actually reach.
+
+    The key is backend-only. It is never read by the frontend, never placed
+    behind a NEXT_PUBLIC_ prefix, and never included in a health response.
     """
 
-    provider: Literal["anthropic"] = Field(default="anthropic", alias="LLM_PROVIDER")
-    api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
-    model: str = Field(default="claude-opus-5", alias="ANTHROPIC_MODEL")
-    router_model: str = Field(default="claude-haiku-4-5-20251001", alias="ANTHROPIC_ROUTER_MODEL")
-    temperature: float = Field(default=0.2, ge=0.0, le=1.0, alias="ANTHROPIC_TEMPERATURE")
-    max_tokens: int = Field(default=4096, gt=0, le=64_000, alias="ANTHROPIC_MAX_TOKENS")
-    timeout_s: float = Field(default=60.0, gt=0, alias="ANTHROPIC_TIMEOUT_S")
+    provider: Literal["google"] = Field(default="google", alias="LLM_PROVIDER")
+    api_key: SecretStr | None = Field(default=None, alias="GEMINI_API_KEY")
+    model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0, alias="GEMINI_TEMPERATURE")
+    max_output_tokens: int = Field(default=1200, gt=0, le=65_536, alias="GEMINI_MAX_OUTPUT_TOKENS")
+    timeout_s: float = Field(default=45.0, gt=0, alias="GEMINI_TIMEOUT_S")
+    max_tool_rounds: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        alias="GEMINI_MAX_TOOL_ROUNDS",
+        description=(
+            "Tool-calling rounds before the model must answer. Bounds a confused "
+            "turn that would otherwise loop until the function times out."
+        ),
+    )
 
     @computed_field  # type: ignore[prop-decorator]
     @property

@@ -35,7 +35,12 @@ if str(REPO_ROOT) not in sys.path:
 
 from satai.geo.aoi import AOI, load_aoi_registry  # noqa: E402
 
+#: Two destinations, one source. The frontend imports its copy at build time;
+#: the serving plane reads its own because Vercel deploys `backend/` as the
+#: function root and cannot see `frontend/`. Both are generated from
+#: configs/aoi.yaml and both are drift-tested, so the duplication cannot rot.
 OUTPUT = REPO_ROOT / "frontend" / "lib" / "study-areas.generated.json"
+BACKEND_OUTPUT = REPO_ROOT / "backend" / "api" / "study_areas.generated.json"
 
 
 def _event_payload(aoi: AOI) -> list[dict[str, Any]]:
@@ -102,12 +107,20 @@ def build_payload() -> dict[str, Any]:
 
 def main() -> int:
     payload = build_payload()
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    serialised = json.dumps(payload, indent=2) + "\n"
 
     areas = payload["studyAreas"]
     verified = sum(len([e for e in a["events"] if e["verified"]]) for a in areas)
-    print(f"wrote {OUTPUT.relative_to(REPO_ROOT)}")
+
+    for destination in (OUTPUT, BACKEND_OUTPUT):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(serialised, encoding="utf-8")
+        # Read back before reporting success. An earlier version of this loop
+        # printed both destinations while writing only one, and a script that
+        # announces work it did not do is worse than one that fails loudly.
+        if destination.read_text(encoding="utf-8") != serialised:
+            raise SystemExit(f"write verification failed for {destination}")
+        print(f"wrote {destination.relative_to(REPO_ROOT)}")
     print(f"  {len(areas)} study areas, {verified} verified event(s)")
     for area in areas:
         events = ", ".join(

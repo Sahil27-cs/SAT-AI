@@ -21,11 +21,13 @@ exists to prevent, committed by the layer that enforces it.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
 from collections import deque
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, Literal
 
 import httpx
@@ -220,7 +222,43 @@ class ChatResponse(BaseModel):
     degraded: bool = Field(
         description="True when no LLM was reachable and this is tool output only."
     )
+    map_actions: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Map intents the assistant expressed by calling show_on_map: which "
+            "region to fly to and which layers to activate. The frontend executes "
+            "these, which is what connects the agent to the map."
+        ),
+    )
     notes: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Study-area catalogue
+# ---------------------------------------------------------------------------
+
+#: Generated from configs/aoi.yaml by scripts/export_study_areas.py, which
+#: writes the same payload here and into the frontend. Read from disk rather
+#: than fetched: study areas are configuration and change on a pull request,
+#: not on a satellite revisit, so a network round trip would add a failure mode
+#: to data that is fixed at deploy time.
+_STUDY_AREAS_PATH = Path(__file__).resolve().parent / "study_areas.generated.json"
+_STUDY_AREAS_CACHE: list[dict[str, Any]] | None = None
+
+
+def study_areas() -> list[dict[str, Any]]:
+    """The configured study areas. Cached for the life of the instance."""
+    global _STUDY_AREAS_CACHE
+    if _STUDY_AREAS_CACHE is None:
+        try:
+            payload = json.loads(_STUDY_AREAS_PATH.read_text(encoding="utf-8"))
+            _STUDY_AREAS_CACHE = list(payload["studyAreas"])
+        except (OSError, ValueError, KeyError) as exc:
+            # An unreadable catalogue disables the agent's region tools rather
+            # than taking down every endpoint; /health reports it.
+            log.error("study-area catalogue unreadable: %s", exc)
+            _STUDY_AREAS_CACHE = []
+    return _STUDY_AREAS_CACHE
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +447,19 @@ async def health() -> dict[str, Any]:
         checks["database"] = "ok"
     except HTTPException as exc:
         checks["database"] = f"unavailable ({exc.status_code})"
-    checks["llm"] = "configured" if os.environ.get("ANTHROPIC_API_KEY") else "not_configured"
+    # Imported lazily: /health must answer even if the agent module fails to
+    # import, because "the agent is broken" is exactly what it exists to report.
+    try:
+        from gemini import describe_configuration
+
+        llm = describe_configuration()
+        checks["llm"] = "configured" if llm["configured"] else "not_configured"
+        checks["llm_provider"] = llm["provider"]
+        if llm["model"]:
+            checks["llm_model"] = llm["model"]
+    except ImportError as exc:  # pragma: no cover - deployment fault
+        checks["llm"] = f"unavailable ({exc})"
+    checks["study_areas"] = str(len(study_areas()))
     checks["audit_log"] = "enabled" if os.environ.get("SUPABASE_SERVICE_KEY") else "disabled"
     return {
         "status": "ok" if checks.get("database") == "ok" else "degraded",
@@ -791,7 +841,7 @@ async def log_chat_turn(request: ChatRequest, response: ChatResponse, latency_ms
         ],
         "regenerated": any("Regenerated once" in n for n in response.notes),
         "latency_ms": latency_ms,
-        "model": os.environ.get("ANTHROPIC_MODEL", "claude-opus-5"),
+        "model": os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
     }
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:

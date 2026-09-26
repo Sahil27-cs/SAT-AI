@@ -1,0 +1,31 @@
+{
+  "fold": "loro_india",
+  "bands": {
+    "vh_db": {
+      "band": "vh_db",
+      "lower": -30.41250389099121,
+      "upper": -11.263973922729491,
+      "mean": -17.62094835243602,
+      "std": 4.103486857522352,
+      "lower_percentile": 2.0,
+      "upper_percentile": 98.0,
+      "n_samples": 28104494,
+      "n_valid": 28104494,
+      "fitted_on_fold": "loro_india",
+      "fitted_on_partition": "train"
+    },
+    "vv_db": {
+      "band": "vv_db",
+      "lower": -21.934499740600586,
+      "upper": -4.23320641517639,
+      "mean": -10.662810293179488,
+      "std": 3.6217796530562385,
+      "lower_percentile": 2.0,
+      "upper_percentile": 98.0,
+      "n_samples": 28104494,
+      "n_valid": 28104494,
+      "fitted_on_fold": "loro_india",
+      "fitted_on_partition": "train"
+    }
+  }
+}

@@ -178,6 +178,7 @@ def main(argv: list[str] | None = None) -> int:
         "regions": regions,
         "n_chips": len(dataset),
         "bands": payload["bands"],
+        "band_config": "sar_ratio" if with_ratio else "sar",
         "selection": {
             "checkpoint_selected_on": list(fold.val_regions),
             "note": (
@@ -226,7 +227,11 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     args.out.mkdir(parents=True, exist_ok=True)
-    destination = args.out / f"test_{fold_name}.json"
+    # The band configuration is part of the filename. Without it a SAR-only run
+    # silently overwrites the SAR+ratio result for the same fold, which is
+    # exactly how a modality ablation loses the arm it was comparing against.
+    band_tag = "sar_ratio" if with_ratio else "sar"
+    destination = args.out / f"{args.partition}_{fold_name}_{band_tag}.json"
     destination.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
     print()

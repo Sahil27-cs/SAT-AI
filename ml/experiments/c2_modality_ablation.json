@@ -1,0 +1,62 @@
+{
+  "experiment": "C2_modality_ablation",
+  "run_at": "2026-09-26T19:04:10.085453+00:00",
+  "status": "PARTIALLY EXECUTED",
+  "fold": "loro_india",
+  "test_region": "India",
+  "protocol": "Leave-one-region-out. Every arm shares the seed, schedule, augmentation, training fold and selection region; they differ only in the input band stack.",
+  "reference_arm": "sar_ratio",
+  "executed": {
+    "sar": {
+      "description": "Sentinel-1 VV + VH",
+      "bands": [
+        "vv_db",
+        "vh_db"
+      ],
+      "n_bands": 2,
+      "iou": 0.5211,
+      "dice": 0.6851,
+      "f1": 0.6851,
+      "precision": 0.8195,
+      "recall": 0.5886,
+      "specificity": 0.9817,
+      "accuracy": 0.9331,
+      "per_chip_iou_median": 0.175
+    },
+    "sar_ratio": {
+      "description": "Sentinel-1 VV + VH + VV/VH dB ratio",
+      "bands": [
+        "vv_db",
+        "vh_db",
+        "vv_vh_ratio"
+      ],
+      "n_bands": 3,
+      "iou": 0.523,
+      "dice": 0.6868,
+      "f1": 0.6868,
+      "precision": 0.7506,
+      "recall": 0.6331,
+      "specificity": 0.9703,
+      "accuracy": 0.9286,
+      "per_chip_iou_median": 0.2232
+    }
+  },
+  "degradation_vs_reference": {
+    "sar": {
+      "delta_iou": -0.0019,
+      "delta_f1": -0.0017,
+      "relative_iou": -0.0036
+    }
+  },
+  "blocked": {
+    "sar_rain": "No rainfall raster co-registered to Sen1Floods11 chips. Needs a GPM IMERG pull for each chip's acquisition window, resampled to the chip grid.",
+    "sar_dem": "No DEM or HAND raster ships with Sen1Floods11. Needs a Copernicus DEM GLO-30 pull per chip footprint plus a HAND derivation.",
+    "full": "Blocked by both of the above."
+  },
+  "finding": "Removing the derived VV/VH dB ratio band costs 0.0019 IoU on the held-out region -- a difference far smaller than the spread between regions, and smaller than what a different seed would plausibly produce. On this dataset the ratio band carries no information the network cannot already derive from VV and VH, which it receives separately.",
+  "caveats": [
+    "Two arms, not five. The rainfall and terrain arms need ancillary rasters that have not been acquired, and are reported as blocked rather than approximated.",
+    "Single seed per arm. With a difference this small, the honest statement is that the arms are indistinguishable at this sample size, not that one is better. Separating them would need repeated seeds and a confidence interval.",
+    "The precision/recall split differs more than the IoU does: the SAR-only arm is more precise and less sensitive. That is a real difference in operating behaviour even where the summary metric agrees, and it matters for a flood product where a missed inundation and a false one carry different costs."
+  ]
+}

@@ -248,13 +248,17 @@ def test_years_and_sensor_names_are_exempt() -> None:
 
 
 def test_the_degraded_answer_states_that_it_is_degraded() -> None:
-    """Requirement 39: degrade to tool output, and say so."""
+    """Requirement 39: degrade to tool output, and say so.
+
+    The values still reach the user -- the point of degrading rather than
+    erroring is that the data plane is unaffected by the language layer being
+    down -- and the caveats travel with them.
+    """
     text = agents._degraded_answer(
         "What is the flood risk?",
-        "bihar_ganga",
         [
             {
-                "tool": "get_location_statistics",
+                "_tool": "get_study_area",
                 "available": True,
                 "region": "Middle Ganga plain, Bihar",
                 "area_km2": 24500.0,
@@ -266,9 +270,16 @@ def test_the_degraded_answer_states_that_it_is_degraded() -> None:
     assert "Language layer unavailable" in text
     assert "24500" in text
     assert "not an official warning" in text
+    assert "get_study_area" in text
 
 
-def test_the_degraded_answer_names_the_configured_regions_when_none_matched() -> None:
-    text = agents._degraded_answer("What is the flood risk in Paris?", None, [])
+def test_the_degraded_answer_names_the_configured_regions_when_no_tool_ran() -> None:
+    """With no key there is no model to pick tools, so nothing is called.
+
+    Listing the configured regions is what keeps that from reading as a dead
+    end: the user learns what the system does cover.
+    """
+    text = agents._degraded_answer("What is the flood risk in Paris?", [])
     assert "bihar_ganga" in text
-    assert "No SAT-AI study area was identified" in text
+    assert "nepal_koshi_terai" in text
+    assert "No SAT-AI tool was called" in text

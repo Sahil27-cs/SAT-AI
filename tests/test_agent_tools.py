@@ -109,9 +109,9 @@ def test_registry_covers_the_documented_tool_surface() -> None:
     assert expected <= set(TOOL_REGISTRY)
 
 
-def test_tool_schemas_are_valid_anthropic_tool_definitions() -> None:
+def test_tool_schemas_are_valid_function_declarations() -> None:
     for spec in TOOL_REGISTRY.values():
-        schema = spec.to_anthropic_schema()
+        schema = spec.to_function_declaration()
         assert schema["name"] == spec.name
         assert schema["input_schema"]["type"] == "object"
         assert "store" not in schema["input_schema"]["properties"]

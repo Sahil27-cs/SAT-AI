@@ -40,7 +40,8 @@ services:
       API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-20}
       # Unset by default: with no key the chat endpoint degrades to structured
       # tool output and says so, which is the documented behaviour.
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       # Also unset by default. Without it the C1 audit log is disabled rather
       # than half-working, and /health reports which.
       SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY:-}
