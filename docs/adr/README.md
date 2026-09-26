@@ -55,9 +55,10 @@ What this buys, what it costs, and what it makes harder later.
 | [002](ADR-002-earth-engine-primary-data-plane.md) | Earth Engine as primary data plane, CDSE as secondary | Accepted | 1 |
 | [003](ADR-003-provenance-and-config-contract.md) | Provenance envelope and single-source configuration | Accepted | 1 |
 | [004](ADR-004-conda-for-geospatial-stack.md) | conda-forge for the geospatial stack, pip for the rest | Accepted | 1 |
-| [005](ADR-005-model-selection-opus-and-router.md) | Opus 5 for reasoning, a small model for routing | Accepted | 1 |
+| [005](ADR-005-model-selection-opus-and-router.md) | Opus 5 for reasoning, a small model for routing | **Superseded by 011** | 1 |
 | [006](ADR-006-rasters-in-object-storage.md) | Rasters as COGs in object storage, not in PostGIS | Accepted | 1 |
 | [007](ADR-007-aoi-selection-deferred.md) | AOI selection deferred to measured evidence in Phase 2 | Accepted | 1 |
 | [008](ADR-008-multiplicative-risk-formulation.md) | Multiplicative hazard–exposure–vulnerability risk | Accepted | 1 |
 | [009](ADR-009-evaluation-splits.md) | Leave-one-region-out splits, not Sen1Floods11's official ones | Accepted | 2 |
 | [010](ADR-010-two-track-preprocessing.md) | Two preprocessing tracks, and the domain-match risk between them | Accepted | 3 |
+| [011](ADR-011-google-gemini-for-the-agent-plane.md) | Google Gemini with native function calling, REST not SDK | Accepted | 10 |

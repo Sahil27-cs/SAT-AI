@@ -48,6 +48,12 @@ dev = [
     # the GDAL chain, not the whole scientific stack).
     "scipy>=1.11",
     "scikit-learn>=1.5",
+    # The ONNX export is only a deliverable if something has checked that it
+    # still agrees with the checkpoint, so tests/test_flood_export.py runs both
+    # and compares. Without these it would skip, and a silently wrong export
+    # would serve numbers that are not the ones the model was evaluated on.
+    "onnx>=1.16",
+    "onnxruntime>=1.18",
 ]
 
 [project.scripts]
@@ -123,7 +129,7 @@ python_version = "3.12"
 # sites are numpy-heavy and whose third-party stubs are incomplete, and adding
 # them without fixing them would mean a wall of ignores that makes the checker
 # decorative. They are the next thing to bring in, one module at a time.
-files = ["satai", "backend"]
+files = ["satai", "backend", "ml"]
 strict = true
 warn_unreachable = true
 show_error_codes = true
@@ -148,6 +154,10 @@ module = [
     # importable without them, which is what lets CI check it at all.
     "torch.*",
     "segmentation_models_pytorch.*",
+    # The export target. `onnx` carries stubs; `onnxruntime` does not, and it is
+    # imported inside the function that needs it so the module stays importable
+    # where only the checkpoint matters.
+    "onnxruntime.*",
 ]
 ignore_missing_imports = true
 

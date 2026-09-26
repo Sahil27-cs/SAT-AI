@@ -16,6 +16,16 @@ data/interim/**
 !data/**/.gitkeep
 !data/manifests/**
 !data/samples/**
+# The inference run's own record: which checkpoint, which chips, which
+# threshold, how much area. Kilobytes of JSON, and the evidence behind every
+# inference number quoted in the README -- the rasters it describes stay out.
+#
+# The directory re-inclusion is load-bearing: git does not descend into an
+# excluded directory, so a negation for a file inside one never matches. The
+# `*.tif` rule below still keeps the rasters out.
+!data/processed/**/
+!data/processed/flood/*_metadata.json
+!data/processed/flood/prediction_manifest.json
 
 # Raster / vector / archive formats, wherever they appear
 *.tif

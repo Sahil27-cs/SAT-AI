@@ -22,8 +22,10 @@ The entire compiled geospatial stack comes from **conda-forge**, pinned in
 mixed in (mixing channels is itself a frequent cause of ABI mismatch).
 
 `pip` is used only for packages with no reliable conda-forge build or that move
-too quickly for one: PyTorch, `segmentation-models-pytorch`, `earthengine-api`,
-`sentinelhub`, `openeo`, `anthropic`, `langgraph`.
+too quickly for one: PyTorch, `onnx` and `onnxruntime`, `earthengine-api`,
+`sentinelhub`, `openeo`. The agent plane needs no vendor SDK at all: Gemini
+is called over REST with `httpx`, which the serving function already carries
+for PostgREST (ADR-011).
 
 `pyproject.toml` declares only pure-Python runtime dependencies, so
 `pip install -e .` inside the conda environment never tries to resolve GDAL.

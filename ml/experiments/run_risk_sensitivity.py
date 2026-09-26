@@ -43,7 +43,7 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from scipy import ndimage, stats
@@ -95,7 +95,9 @@ def correlated_fields(
         noise = np.random.default_rng(noise_seed).normal(size=(size, size))
         combined = weight * shared + np.sqrt(1.0 - weight**2) * noise
         smoothed = ndimage.gaussian_filter(combined, sigma=sigma)
-        ranks = stats.rankdata(smoothed).reshape(smoothed.shape)
+        # scipy is untyped here, so rankdata's result arrives as Any; the cast
+        # is what makes the declared return type mean something.
+        ranks = cast(np.ndarray, stats.rankdata(smoothed).reshape(smoothed.shape))
         return (ranks - 0.5) / ranks.size
 
     return make(seed + 1), make(seed + 2), make(seed + 3)

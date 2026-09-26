@@ -1,10 +1,12 @@
 # Evaluation protocol and results
 
-Nine named experiments. Two have been executed and their real numbers appear
-below. For the other seven, each entry states which code exists, which does
-not, and what is blocking the result. Four of them have no implementation at
-all, and say so rather than borrowing the word "implemented" from the parts of
-the system that are.
+Ten named experiments. Four have been executed and one partially; their real
+numbers appear below, including a negative result. For the other five, each
+entry states which code exists, which does not, and what is blocking the
+result. None is blocked on code any more — the remaining blockers are one
+training run, one labelled target, two acquisitions and one API key — and each
+entry says which of those it is rather than borrowing the word "implemented"
+from the parts of the system that are.
 
 **`[RESULT TO BE GENERATED]` means exactly that.** No experiment in this
 document has an estimated, illustrative or expected value. A fabricated number
@@ -51,64 +53,115 @@ is not a result.
 
 ## Experiment register
 
-### 1 — Flood baseline (Otsu + HAND, per-pixel ensemble)
+### 1 — Flood baseline (Otsu, per-pixel ensemble) — **EXECUTED**
 
-Establishes what an unsupervised operational method and a context-free
-supervised model achieve, so the deep model's margin means something.
+Establishes what an unsupervised operational method achieves, so the deep
+model's margin means something.
 
-- **Data**: Sen1Floods11, Track A
-- **Splits**: official + LORO
-- **Code that exists**: `satai/ml/baseline.py` (both baselines, unit-tested),
-  `satai/ml/metrics.py`, `satai/preprocessing/splits.py`
-- **Code that does not exist**: the runner that loads chips, applies the folds
-  and writes the scored artifact. `ml/flood/` is an empty directory.
-- **Status**: `[RESULT TO BE GENERATED]`
-- **Blocker**: the runner, and the Sen1Floods11 archive —
-  `storage.googleapis.com` is blocked by the build environment's egress policy
+- **Data**: Sen1Floods11 v1.1 HandLabeled, Track A. 441 chips scored across 11
+  regions; the archive downloads without credentials, contrary to what this
+  document previously recorded.
+- **Splits**: leave-one-region-out
+- **Code**: `satai/ml/baseline.py`, `satai/ml/metrics.py`,
+  `satai/preprocessing/splits.py`, runner
+  `ml/experiments/run_flood_baseline.py`, guard selection
+  `ml/experiments/select_baseline_threshold.py`
+- **Result**: the separability guard was selected **leave-one-region-out** and
+  moved from the assumed 0.75 to **0.66**. Pooled IoU over all regions at that
+  guard is **0.4199**. On the held-out India region, 68 chips: **IoU 0.3754, F1
+  0.5459, P 0.7293, R 0.4362**.
+- **Optimism of the naive protocol: +0.0000.** All eleven folds selected 0.66
+  independently, so choosing the guard on all the data would have given the same
+  answer here. That is a measured result, not a reason to skip the protocol.
+- **Caveat**: no HAND terrain mask ships with Sen1Floods11, so this is a lower
+  bound on the method as operationally deployed. 57 of 68 India chips were
+  called unimodal by the guard.
+- **Reports**: `ml/experiments/flood_baseline/threshold_selection.json`,
+  `ml/experiments/flood_baseline/sweep_0.66/otsu_baseline.json`
 
-### 2 — Flood U-Net
+### 2 — Flood U-Net — **EXECUTED**
 
-- **Data**: Sen1Floods11, Track A
-- **Splits**: official + LORO, 3 seeds
-- **Code that exists**: the evaluation layer it would be scored with
-  (`satai/ml/metrics.py`) and the split logic (`satai/preprocessing/splits.py`)
-- **Code that does not exist**: the model itself. There is no `unet.py` and no
-  training loop anywhere in this repository.
-- **Status**: `[RESULT TO BE GENERATED]`
-- **Blocker**: the model, the dataset, and a GPU. The build environment has
-  none of the three; the target machine (RTX 4050, 6 GB) supplies the third.
+- **Data**: Sen1Floods11 v1.1 HandLabeled, Track A
+- **Splits**: leave-one-region-out, India held out entirely
+- **Code**: `ml/flood/` — `model.py` (U-Net, 4 levels, base width 32,
+  7,763,041 parameters, trained from scratch), `losses.py` (masked BCE + Dice),
+  `dataset.py`, `train.py`, `evaluate.py`
+- **Result**: **IoU 0.5230, F1 0.6868, P 0.7506, R 0.6331** on the 68 held-out
+  India chips at threshold 0.5, after 32 epochs. Against the baseline's 0.3754
+  that is **+0.1476 IoU**, a 39 % relative gain, and it clears the bar this
+  project set: a deep model that could not beat Otsu would have demonstrated
+  nothing.
+- **Two numbers that belong next to the headline**, not behind it:
+  - validation IoU was **0.8679** — on Mekong, the fold's *validation* region.
+    Quoting that as the model's score would have overstated it by 0.345.
+  - the **per-chip median IoU is 0.223** against a pooled 0.523. The pooled
+    figure is dominated by chips with large water bodies; the model does well
+    where there is much water and poorly where there is little.
+- **Deviation from the protocol above**: **one seed, not three.** Seed variance
+  is therefore unmeasured, which matters directly for experiment 4 — where the
+  effect being measured is smaller than a seed difference plausibly is.
+- **Reports**: `ml/experiments/flood_unet/test_loro_india_sar_ratio.json`,
+  `ml/experiments/flood_comparison.json`; registry entry in
+  `ml/registry/models.json`
 
-### 3 — LORO gap (C-adjacent)
+### 3 — LORO gap (C-adjacent) — **BLOCKED**
 
 The quantity of interest is the difference between the official-split score and
 the leave-one-region-out score for the same model and seed.
 
+- **Status**: `[RESULT TO BE GENERATED]`. Everything trained here used LORO, so
+  the official-split arm of the comparison does not exist and the gap has not
+  been measured.
+- **What is not this measurement**: the 0.345 validation-to-test gap reported in
+  experiment 2 is a *region-to-region* gap within LORO. It suggests the
+  direction, and it is not the defined quantity.
+- **Needs**: one training run on Sen1Floods11's official splits with the same
+  seed and schedule. No new data and no new code — `ml/flood/train.py` takes the
+  protocol as an argument.
+
+### 4 — Modality loss (**C2**) — **PARTIALLY EXECUTED** (2 of 5 arms)
+
+Measured degradation when a modality is withheld at inference. The contribution
+is the *measured* degradation curve, which the corpus does not report for this
+task.
+
+- **Code**: `ml/experiments/run_modality_ablation.py`. Every arm shares seed,
+  schedule, augmentation, training fold and selection region, and differs only
+  in the input band stack.
+- **Executed**: `sar` (VV, VH) → IoU **0.5211**; `sar_ratio` (VV, VH, VV−VH
+  ratio) → IoU **0.5230**.
+- **Result so far: removing the derived ratio band costs 0.0019 IoU** — a
+  negative result, reported as one. It is far smaller than the spread between
+  regions and plausibly smaller than a seed difference, which is why experiment
+  2's single seed is recorded as a limitation rather than a footnote.
+- **The explainability cross-reference makes this stranger, not clearer.**
+  Integrated gradients assign the ratio band a **53.4 % attribution share** —
+  the largest of the three — and removing it costs nothing. Integrated gradients
+  and occlusion do not even agree on its sign. High attribution is not
+  necessity; that is precisely why this experiment removes a band and measures
+  instead of reading an attribution chart
+  (`ml/experiments/flood_xai/xai_loro_india_India.json`).
+- **Blocked arms**: `sar_rain` needs a GPM IMERG pull per chip acquisition
+  window resampled to the chip grid; `sar_dem` needs Copernicus DEM GLO-30 per
+  chip footprint plus a HAND derivation; `full` needs both.
+- **Report**: `ml/experiments/c2_modality_ablation.json`
+
+### 5 — Rural→urban transfer (**C3**) — **BLOCKED**
+
+Train on rural Indian flood chips, evaluate on an urban Indian target. The
+expected direction is known and physical: urban double-bounce between building
+walls and standing water *raises* backscatter where the method expects a drop,
+so the signature inverts. The contribution is the size of the gap, in India,
+measured.
+
+- **Code**: the model and the scoring path now exist (experiment 2), as does the
+  Track A/B distribution gate (`satai/ml/distribution_gate.py`), which is the
+  precondition for trusting any cross-track result.
 - **Status**: `[RESULT TO BE GENERATED]`
-- **Depends on**: experiments 1 and 2, neither of which has a runner yet.
-  The split logic this experiment measures *is* implemented and tested.
-
-### 4 — Modality loss (**C2**)
-
-Measured degradation when a modality is withheld at inference: SAR-only,
-no-DEM, no-optical, all available. The contribution is the *measured*
-degradation curve, which the corpus does not report for this task.
-
-- **Status**: not implemented; `[RESULT TO BE GENERATED]`
-- **Blocker**: depends on experiment 2, which has no model
-
-### 5 — Rural→urban transfer (**C3**)
-
-Train on rural Indian flood chips, evaluate on Mumbai MMR. The expected
-direction is known and physical: urban double-bounce between building walls and
-standing water *raises* backscatter where the method expects a drop, so the
-signature inverts. The contribution is the size of the gap, in India, measured.
-
-- **Code that exists**: the Track A/B distribution gate
-  (`satai/ml/distribution_gate.py`, unit-tested), which is the precondition for
-  trusting any cross-track result
-- **Status**: the transfer experiment itself is not implemented;
-  `[RESULT TO BE GENERATED]`
-- **Blocker**: depends on experiment 2; also needs Track B acquisition
+- **Blocker**: the *target*, not the code. Sen1Floods11's India chips are not
+  urban, and no labelled urban Indian flood imagery has been acquired. Running
+  the model over an unlabelled urban scene would produce a map and no
+  measurement, which is not what C3 claims.
 
 ### 6 — Risk-engine sensitivity (**C4**) — **EXECUTED**
 
@@ -143,23 +196,32 @@ product's ranking approaches that of any single factor.
 **Design limit, stated with the result**: one-at-a-time holds the other
 exponents fixed and does not explore interactions.
 
-### 7 — Wildfire / cyclone indices
+### 7 — Wildfire / cyclone indices — **BLOCKED ON ACQUISITION**
 
-- **Status**: not implemented. `ml/wildfire/` and `ml/cyclone/` are empty
-  directories; the risk engine that would consume their output exists and is
-  tested. `[RESULT TO BE GENERATED]`
-- **Blocker**: the modules, plus Earth Engine credentials for ERA5 and
-  fuel-state inputs
+- **Code that exists**: `satai/hazards/wildfire.py` (burn severity as dNBR
+  against published USGS breaks, and a multiplicative fire-danger index) and
+  `satai/hazards/extreme_weather.py` (rainfall anomaly against a climatology,
+  modified-Rankine cyclone track exposure) — deterministic and unit-tested. The
+  risk engine that consumes them exists and is tested.
+- **Code that does not exist**: `ml/wildfire/` and `ml/cyclone/` as *pipelines*.
+  There is no acquisition, no manifest and no scored artifact for either hazard,
+  so the computations have never been run over real input.
+- **Status**: `[RESULT TO BE GENERATED]`
+- **Blocker**: Earth Engine credentials for ERA5 and fuel-state inputs, and a
+  FIRMS pull. What is missing is the data, not the arithmetic.
 
 ### 8 — Damage assessment transfer
 
 xBD-trained change classification evaluated on Indian building stock.
 
-- **Status**: not implemented. `ml/damage/` is an empty directory.
-  `[RESULT TO BE GENERATED]`
-- **Blocker**: the module, and the xBD download. No Indian damage labels exist,
-  so even once built this can only be a qualitative transfer check, and is
-  labelled as one
+- **Code that exists**: `satai/hazards/damage.py` — SAR change detection,
+  unit-tested.
+- **Code that does not exist**: `ml/damage/` as a pipeline; nothing trains on
+  xBD or scores against it.
+- **Status**: `[RESULT TO BE GENERATED]`
+- **Blocker**: the xBD download, and the pipeline around it. No Indian damage
+  labels exist, so even once built this can only be a qualitative transfer
+  check, and is labelled as one
 
 ### 9a — Validator validation — **EXECUTED**
 
@@ -205,33 +267,41 @@ than whether the system knows where its competence ends.
   agents, the router and the validator — all unit-tested (`satai/agents/`)
 - **Status**: the harness is complete and its instrument is validated at 100 %.
   The measurement over a live model is `[RESULT TO BE GENERATED]`.
-- **Blocker**: `ANTHROPIC_API_KEY` is not set in the build environment
+- **Blocker**: `GEMINI_API_KEY` is not set in the build environment. The
+  deployed loop is Gemini native function calling over REST, and the
+  deployed validator is parity-tested against the scored one
+  (`tests/test_grounding_parity.py`), so what is missing is the run and not
+  the instrument.
 
 ---
 
 ## Summary
 
-| # | Experiment | Contribution | Status |
-|---|---|---|---|
 | # | Experiment | Contribution | Code | Result |
 |---|---|---|---|---|
-| 1 | Flood baseline | — | Models yes, runner no | Blocked: runner + dataset |
-| 2 | Flood U-Net | — | **No model written** | Blocked: model + dataset + GPU |
-| 3 | LORO gap | — | Split logic yes | Blocked: 1, 2 |
-| 4 | Modality loss | C2 | **Not written** | Blocked: 2 |
-| 5 | Rural→urban transfer | C3 | Gate yes, experiment no | Blocked: 2 + Track B |
+| 1 | Flood baseline | — | Complete | **Executed** — IoU 0.3754 on held-out India; guard 0.66, LORO-selected |
+| 2 | Flood U-Net | — | Complete | **Executed** — IoU 0.5230 on held-out India, +0.1476 over baseline |
+| 3 | LORO gap | — | Complete | Blocked: needs an official-split run |
+| 4 | Modality loss | C2 | Complete | **Partially executed** — 2 of 5 arms; ratio band worth −0.0019 IoU |
+| 5 | Rural→urban transfer | C3 | Complete | Blocked: no labelled urban Indian target |
 | 6 | Risk sensitivity | C4 | Complete | **Executed** |
-| 7 | Wildfire / cyclone | — | **Not written** | Blocked: modules + credentials |
-| 8 | Damage transfer | — | **Not written** | Blocked: module + xBD |
+| 7 | Wildfire / cyclone | — | Computations yes, pipelines no | Blocked: acquisition + credentials |
+| 8 | Damage transfer | — | Change detection yes, pipeline no | Blocked: xBD acquisition |
 | 9a | Validator validation | C1 instrument | Complete | **Executed** |
 | 9b | C1 benchmark | C1 | Complete | Blocked: API key |
 
-Two of nine executed. Both are the two that need no GPU, no dataset download
-and no credential, and both produced real numbers, reported above with their
-limits.
+**Four of ten executed, one partially.** Experiments 1, 2, 4, 6 and 9a produced
+real numbers, all reported above with their limits — including a negative result
+(4) and a gap that a validation score would have hidden (2).
 
-Three of the remaining seven have complete code and wait only on a resource
-(9b on a key; 1 and 5 on a runner plus data). **Four have no code at all** —
-the U-Net, the modality-loss study, the wildfire/cyclone indices and the damage
-module. Saying they are "implemented" would be the same category of claim this
-project exists to argue against, so the table says what is there.
+Of the five that remain, none is blocked on code any longer:
+
+- **3** needs one training run on the official splits.
+- **5** needs a labelled urban Indian target.
+- **7** and **8** need acquisition — the computations are implemented and tested
+  in `satai/hazards/`, what is missing is real input.
+- **9b** needs `GEMINI_API_KEY` on the deployment.
+
+That distinction is the point of this register. "Blocked on a resource" and "not
+written" are different claims, and a project that blurs them ends up describing
+itself as more finished than it is.

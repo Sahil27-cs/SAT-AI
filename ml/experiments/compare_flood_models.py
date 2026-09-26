@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from satai.paths import REPO_ROOT
+    from satai.paths import REPO_ROOT, relative_to_repo
 except ImportError:  # pragma: no cover - outside an installed package
     _candidates: list[Path] = []
     if os.environ.get("SATAI_REPO_ROOT"):
@@ -37,6 +37,11 @@ except ImportError:  # pragma: no cover - outside an installed package
     _candidates += [_cwd, *_cwd.parents, *(p for p in sorted(_cwd.iterdir()) if p.is_dir())]
     REPO_ROOT = next((c for c in _candidates if (c / "satai" / "provenance.py").is_file()), _cwd)
     sys.path.insert(0, str(REPO_ROOT))
+
+    # The root is on the path now, so the real helper is importable. Importing it
+    # here rather than reimplementing it keeps one definition of what a recorded
+    # path looks like.
+    from satai.paths import relative_to_repo
 
 EXPERIMENTS = REPO_ROOT / "ml" / "experiments"
 
@@ -164,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         f"  per-chip IoU median {unet['per_chip_iou']['median']:.3f} "
         f"(pooled is dominated by large-water chips)"
     )
-    print(f"\nwritten to {os.path.relpath(args.out, REPO_ROOT)}")
+    print(f"\nwritten to {relative_to_repo(args.out)}")
     return 0
 
 

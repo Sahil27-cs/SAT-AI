@@ -390,8 +390,8 @@ def _model_or_502(model: type[BaseModel], row: dict[str, Any], table: str) -> An
 #: client. This is a *cost guard*, not a security control, and the distinction
 #: matters: each serverless instance keeps its own deque, so the effective
 #: global limit is this number multiplied by the number of warm instances, and
-#: a cold start resets it. It is here to stop one script from draining an
-#: Anthropic budget in a loop. Anything stronger belongs at the edge (Vercel
+#: a cold start resets it. It is here to stop one script from draining the
+#: Gemini budget in a loop. Anything stronger belongs at the edge (Vercel
 #: firewall / WAF), where the state is actually shared.
 _CHAT_CALLS: dict[str, deque[float]] = {}
 

@@ -19,7 +19,7 @@ import contextlib
 import os
 from pathlib import Path
 
-__all__ = ["REPO_ROOT", "find_repo_root", "in_notebook"]
+__all__ = ["REPO_ROOT", "find_repo_root", "in_notebook", "relative_to_repo"]
 
 #: Files that together identify this checkout rather than a same-named directory
 #: somewhere else. Both must be present: `pyproject.toml` alone matches any
@@ -95,3 +95,24 @@ def find_repo_root(start: Path | None = None) -> Path:
 #: Resolved from this file, which is always importable once the package is.
 #: Scripts that cannot import the package yet use `find_repo_root()` instead.
 REPO_ROOT: Path = Path(__file__).resolve().parent.parent
+
+
+def relative_to_repo(path: Path | str, *, root: Path | None = None) -> str:
+    r"""Repo-relative POSIX path, for anything written into an artifact.
+
+    `os.path.relpath` returns backslashes on Windows, and every string this
+    project records is read back somewhere else: in CI, in the serverless
+    functions, and by anyone who clones the repository. A recorded path of
+    ``ml\experiments\flood_unet\test.json`` resolves to nothing on Linux, so
+    a report cites a file that exists and cannot be found -- which reads as a
+    missing artifact rather than as a path bug.
+
+    A path outside the checkout is returned absolute rather than as a chain of
+    ``..`` segments, which would be meaningless to the reader of a report.
+    """
+    base = (root or REPO_ROOT).resolve()
+    target = Path(path).resolve()
+    try:
+        return target.relative_to(base).as_posix()
+    except ValueError:
+        return target.as_posix()

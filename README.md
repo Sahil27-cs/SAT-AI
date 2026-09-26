@@ -74,7 +74,7 @@ SERVING PLANE  FastAPI + PostGIS + object storage
   (sub-second, online)                         →  reads precomputed artifacts
        ↓
 AGENT PLANE    keyword router → 3 agents → typed tools → grounding validator
-  (seconds, online)                            →  Claude Opus 5
+  (seconds, online)                            →  Google Gemini
        ↓
 FRONTEND       Next.js + MapLibre GL on Vercel
 ```
@@ -101,46 +101,96 @@ corpus through each implementation and fails if their verdicts diverge.
 
 ## Status
 
-**Built and deployed; two of nine experiments executed.** 515 tests green,
-`mypy --strict` clean over `satai/` **and** `backend/`, `ruff check` and
-`ruff format` clean — all four run in CI
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), alongside the frontend
-type-check and build and a `gitleaks` scan of the full history.
+**Built, trained and deployed.** 661 tests green, `mypy --strict` clean over
+`satai/`, `backend/` **and** `ml/`, `ruff check` and `ruff format` clean — all
+four run in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)),
+alongside the frontend type-check and build and a `gitleaks` scan of the full
+history.
 
 | | |
 |---|---|
 | ✅ Phase 0 | Gap analysis against the 7-paper corpus; contributions revised to C1–C4 |
-| ✅ Phase 1 | Repository, environment, config layer, provenance contract, CI, 10 ADRs |
+| ✅ Phase 1 | Repository, environment, config layer, provenance contract, CI, ADRs |
 | ✅ Phase 2 | Provider layer (CDSE / Earth Engine / FIRMS), manifests, AOI measurement |
 | ✅ Phase 3a | Preprocessing **Track A** — LORO splits, band math, leakage-safe normalisation |
-| ✅ Phase 4 | Flood baselines: Otsu+HAND with a unimodality guard, per-pixel ensemble |
+| ✅ Phase 4 | Flood baselines: Otsu with a unimodality guard, per-pixel ensemble — **scored** |
 | ✅ Phase 5 | Segmentation metrics, Track A/B distribution gate |
-| ✅ Phase 8 | Risk engine + sensitivity analysis — **C4 executed** |
-| ✅ Phase 9 | FastAPI serving plane, 19 routes, deployed and verified |
-| ✅ Phase 10 | Agent plane: 9 tools, 3 agents, grounding validator — **instrument validated at 100 %** |
-| ✅ Phase 11 | Next.js + MapLibre frontend, 12 sections, deployed and verified |
-| ⬜ | Deep flood model and the C1/C2/C3 measurements — see below |
+| ✅ Phase 6 | **Deep flood model trained and evaluated** — `ml/flood/`, U-Net, region-disjoint |
+| ✅ Phase 7 | Inference artifacts (COG + GeoJSON + provenance), per-band explainability, ONNX export verified against the checkpoint |
+| ✅ Phase 8 | Risk engine + sensitivity analysis — **C4 executed**; the flood model is wired into it |
+| ✅ Phase 9 | FastAPI serving plane, deployed and verified |
+| ✅ Phase 10 | Agent plane on **Google Gemini** with native function calling and map control |
+| ✅ Phase 11 | Next.js + MapLibre frontend, deployed and verified |
+| ◐ | **C2 partially executed** (2 of 5 arms); **C1 and C3 blocked** — see below |
+
+### The flood model, measured
+
+Trained on Sen1Floods11 (446 hand-labelled chips, 11 flood events) under
+leave-one-region-out. India was held out entirely and influenced neither
+training nor checkpoint selection.
+
+| Held-out India, 68 chips | IoU | F1 | Precision | Recall |
+|---|---|---|---|---|
+| Otsu baseline | 0.3754 | 0.5459 | 0.7293 | 0.4362 |
+| **U-Net (VV, VH, ratio)** | **0.5230** | **0.6868** | 0.7506 | 0.6331 |
+| delta | **+0.1476** | | | |
+
+Otsu with a unimodality guard is a strong operational method, and a U-Net that
+could not beat it would have demonstrated nothing. Two numbers belong beside
+the headline rather than behind it:
+
+- **Validation IoU was 0.8679** — on Mekong, the fold's *validation* region.
+  The 0.345 gap is exactly what quoting a validation score would have
+  overstated.
+- **Per-chip median IoU is 0.223** against a pooled 0.523. The pooled figure is
+  dominated by chips with large water bodies: the model does well where there
+  is a lot of water and poorly where there is little.
+
+The baseline's separability guard moved from 0.75 to **0.66 on measurement**,
+selected leave-one-region-out. All eleven folds chose it independently, so the
+region-disjoint estimate and the all-data optimum agree to four decimals.
+
+**C2, so far: adding the VV−VH ratio band is worth −0.0019 IoU.** A negative
+result, reported as one. Explainability makes it stranger rather than clearer:
+integrated gradients assign the ratio band a **53.4 % attribution share**, the
+largest of the three, and removing it costs nothing. The two methods do not even
+agree on its sign — occlusion says positive, gradients say negative
+([`ml/experiments/flood_xai/`](ml/experiments/flood_xai)). High attribution is
+not necessity, which is the whole reason C2 removes a band and measures rather
+than reading an attribution chart.
+
+**What the model can serve.** `ml/flood/predict.py` writes a cloud-optimised
+GeoTIFF, a WGS84 GeoJSON extent and a provenance envelope per chip — on the
+eight held-out India chips, 35.9 km² flooded of 151.3 km² observed.
+`ml/flood/export.py` exports to ONNX for CPU serving and then *checks* the
+export: the largest per-pixel probability disagreement with the checkpoint is
+**7.7e-07**, and no pixel crosses the 0.5 boundary
+([`models/flood/flood_unet_loro_india_sar_ratio.parity.json`](models/flood)).
+An export nobody compared against the checkpoint would serve numbers that are
+not the ones reported above, so the registry records an export only together
+with its parity result.
 
 ### What is not built, and what is merely blocked
 
 Two different things, kept apart because conflating them is how a project
 starts describing itself as more finished than it is.
 
-**Not written at all** — there is no `ml/flood/`, `ml/wildfire/`, `ml/cyclone/`
-or `ml/damage/` at all; `ml/` holds only `experiments/` and `registry/`:
-
-- the flood U-Net and its training loop
-- the modality-loss study (C2) and the rural→urban transfer study (C3), both of
-  which depend on that model
-- the wildfire and cyclone index modules
-- the damage-assessment module
+**Not written at all** — `ml/wildfire/`, `ml/cyclone/` and `ml/damage/` do not
+exist as pipelines. Their *computations* do: `satai/hazards/` implements burn
+severity (dNBR against published USGS breaks), a multiplicative fire-danger
+index, rainfall anomaly against a climatology, modified-Rankine cyclone track
+exposure, and SAR change detection — all deterministic, all tested. What is
+missing is the acquisition that would feed them real inputs.
 
 **Built and tested, waiting on a resource:**
 
 | Blocker | Blocks |
 |---|---|
-| `ANTHROPIC_API_KEY` not set | Experiment 9b — the C1 measurement. Everything else about C1 is done and its instrument is validated. |
-| Sen1Floods11 archive (`storage.googleapis.com` unreachable from the build environment) | Scoring the flood baselines, which are themselves implemented and unit-tested |
+| `GEMINI_API_KEY` not set | **C1.** The Gemini tool-calling loop, the 28-question benchmark, the 4-check validator and the `chat_turns` audit log all exist and the validator is parity-tested against the scored instrument. Only the run is missing. |
+| `SUPABASE_SERVICE_KEY` not set | The C1 audit log. `/health` reports `audit_log: disabled` until it is set. |
+| No labelled urban Indian flood imagery | **C3.** The model exists and the protocol is implemented; Sen1Floods11's India chips are not urban, so the *target* is what is missing, not code. |
+| No co-registered rainfall or DEM rasters | **C2's** three remaining arms. Needs a GPM IMERG pull per chip acquisition window and a Copernicus DEM GLO-30 pull per footprint. |
+| No exposure raster (population or assets) | The flood **risk** map. `R = H^a * E^b * V^g` needs E, and [`ml/flood/to_risk.py`](ml/flood/to_risk.py) refuses to substitute a constant — a flat exposure field would make the risk map a rescaling of the hazard map while presenting itself as a multi-factor result. The coupling itself is implemented and tested. |
 | Earth Engine / CDSE credentials | Track B acquisition |
 
 Full register, with the code that exists stated per experiment:
@@ -185,13 +235,17 @@ backend/        FastAPI serving plane            (Phase 9)
   api/          the two modules Vercel deploys
   app/db/migrations/   numbered SQL: schema, read views, grants + RLS
 ml/             training, evaluation, experiments (Phase 4+)
+  flood/        U-Net, losses, dataset, train, evaluate, predict, explain,
+                export (ONNX), to_risk — the trained pipeline
+  registry/     models.json, DERIVED from artifacts on disk — never hand-written
+  experiments/  one runnable script per numbered experiment, with its reports
 frontend/       Next.js + MapLibre               (Phase 11)
 configs/        aoi.yaml, risk.yaml, couplings.yaml — documented parameters
 data/           gitignored except manifests/ and samples/
-docs/adr/       architecture decision records (10)
+docs/adr/       architecture decision records (11)
 docs/           methodology, evaluation, deployment, data-sources,
                 research-contribution, limitations (living), research-gap
-tests/          515 tests across 24 modules
+tests/          661 tests across 34 modules
 scripts/
 .github/        CI: lint, mypy, pytest, frontend build, gitleaks
 ```

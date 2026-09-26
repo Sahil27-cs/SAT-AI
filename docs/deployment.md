@@ -16,10 +16,12 @@ Live URLs, how the pieces fit, and how to redeploy.
 Health check at the time of writing:
 
 ```json
-{"status":"ok","version":"0.4.0","checks":{"api":"ok","database":"ok","llm":"not_configured"}}
+{"status":"ok","version":"0.5.0","checks":{"api":"ok","database":"ok",
+ "llm":"not_configured","llm_provider":"google-gemini","study_areas":"7",
+ "audit_log":"disabled"}}
 ```
 
-`llm: not_configured` is accurate and deliberate: no `ANTHROPIC_API_KEY` is set
+`llm: not_configured` is accurate and deliberate: no `GEMINI_API_KEY` is set
 on the deployment, so `/api/v1/chat` returns structured tool output with
 `degraded: true` rather than failing. Setting the key turns the language layer
 on with no other change.
@@ -97,8 +99,8 @@ Nothing in the repository is a secret, and nothing secret is in the repository.
 | Value | Where it lives | Why that is safe |
 |---|---|---|
 | Supabase **publishable** key | `.env.example`, code fallback, browser bundle | Designed for untrusted clients; read-only under RLS |
-| Supabase **service-role** key | Nowhere in this repository | Never referenced by any code path |
-| `ANTHROPIC_API_KEY` | Environment only, no fallback | Would be a real credential leak |
+| Supabase **service-role** key | Environment only, read once at import in `backend/api/index.py` | Write credential for the `chat_turns` audit log; no fallback, never returned by any endpoint, and `/health` reports only whether the audit log is enabled |
+| `GEMINI_API_KEY` | Environment only, no fallback, backend only | Would be a real credential leak. `tests/test_key_containment.py` sets it to a sentinel and asserts the value appears in no response body, no header, no log record and nothing the frontend reads |
 | CDSE / Earth Engine credentials | Environment only, no fallback | Same |
 
 The publishable URL and key appear as *fallbacks* in `backend/api/index.py` and
@@ -142,8 +144,9 @@ Environment variables (all optional except the last):
 | `SUPABASE_ANON_KEY` | publishable key | Read access |
 | `SUPABASE_TABLE_PREFIX` | `satai_` | View-surface prefix |
 | `CORS_ALLOW_ORIGINS` | `*` | Browser origins |
-| `ANTHROPIC_API_KEY` | unset | **Turns the language layer on** |
-| `ANTHROPIC_MODEL` | `claude-opus-5` | Reasoning model |
+| `GEMINI_API_KEY` | unset | **Turns the language layer on.** Backend only — never `NEXT_PUBLIC_*` |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Reasoning model, native function calling |
+| `SUPABASE_SERVICE_KEY` | unset | Turns the `chat_turns` audit log on |
 
 Verify with:
 

@@ -82,6 +82,13 @@ def normalise_percentile(
     return np.clip((array - low) / (high - low), 0.0, 1.0)
 
 
+#: The label for a cell with no finite risk value. Deliberately not one of the
+#: configured bands: "we did not observe this" is a different statement from
+#: any level of risk, and a reader who sees it in a band breakdown should not be
+#: able to mistake it for one.
+UNOBSERVED_BAND = "NODATA"
+
+
 @dataclass(frozen=True)
 class RiskConfig:
     """Risk-engine parameters, loaded from ``configs/risk.yaml``."""
@@ -264,6 +271,13 @@ class RiskEngine:
             take = (~assigned) & (array <= cut)
             out[take] = name
             assigned |= take
+
+        # A cell nobody observed is not the highest-risk cell in the area.
+        # Every comparison against NaN is False, so without this a masked pixel
+        # passes no cut and falls through to the top band -- painting the
+        # unobserved third of a SAR chip RED. UNOBSERVED is its own label so
+        # that it appears in the band fractions instead of hiding inside them.
+        out[~np.isfinite(array)] = UNOBSERVED_BAND
         return out
 
     def compute(

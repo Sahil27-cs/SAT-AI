@@ -21,7 +21,7 @@ Two error types, and they are not symmetric in cost:
 
 This runs with no API key, no GPU and no satellite data, because it tests the
 validator rather than any model. The C1 result itself needs a reachable
-Anthropic API and the populated serving plane; this is its precondition.
+Gemini API and the populated serving plane; this is its precondition.
 
 Usage
 -----
@@ -302,7 +302,7 @@ def main() -> int:
         "cases": rows,
         "notes": [
             "Measures the C1 INSTRUMENT, not the agent. The C1 result itself "
-            "requires a reachable Anthropic API and a populated serving plane.",
+            "requires a reachable Gemini API and a populated serving plane.",
             "False negatives are the dangerous direction: a missed violation "
             "understates the grounding-violation rate and would let the system "
             "claim better grounding than it has.",

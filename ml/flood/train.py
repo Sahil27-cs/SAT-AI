@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from satai.paths import REPO_ROOT
+    from satai.paths import REPO_ROOT, relative_to_repo
 except ImportError:  # pragma: no cover - outside an installed package
     _candidates: list[Path] = []
     if os.environ.get("SATAI_REPO_ROOT"):
@@ -48,11 +48,18 @@ except ImportError:  # pragma: no cover - outside an installed package
     REPO_ROOT = next((c for c in _candidates if (c / "satai" / "provenance.py").is_file()), _cwd)
     sys.path.insert(0, str(REPO_ROOT))
 
+    # The root is on the path now, so the real helper is importable. Importing it
+    # here rather than reimplementing it keeps one definition of what a recorded
+    # path looks like.
+    from satai.paths import relative_to_repo
+
 import numpy as np
 import torch
+from torch.amp.autocast_mode import autocast
+from torch.amp.grad_scaler import GradScaler
 from torch.utils.data import DataLoader
 
-from ml.flood.dataset import FloodChips, bands_for, build_reader, fit_normalizer
+from ml.flood.dataset import FloodBatch, FloodChips, bands_for, build_reader, fit_normalizer
 from ml.flood.losses import FloodLoss
 from ml.flood.model import UNet, UNetSpec
 from satai.ml.metrics import SegmentationMetrics, aggregate, evaluate
@@ -123,7 +130,7 @@ def select_fold(data_root: Path, fold_name: str) -> Fold:
 
 @torch.no_grad()
 def run_validation(
-    model: UNet, loader: DataLoader, loss_fn: FloodLoss, device: torch.device
+    model: UNet, loader: DataLoader[FloodBatch], loss_fn: FloodLoss, device: torch.device
 ) -> tuple[float, SegmentationMetrics]:
     """Loss and pooled segmentation metrics over a whole partition."""
     model.eval()
@@ -216,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     loss_fn = FloodLoss()
     optimiser = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=args.epochs)
-    scaler = torch.amp.GradScaler("cuda", enabled=args.amp and device.type == "cuda")
+    scaler = GradScaler("cuda", enabled=args.amp and device.type == "cuda")
 
     start_epoch, best_iou, history = 0, -1.0, History.empty()
     if args.resume and args.resume.is_file():
@@ -240,7 +247,7 @@ def main(argv: list[str] | None = None) -> int:
         for features, target, valid in train_loader:
             features, target, valid = features.to(device), target.to(device), valid.to(device)
             optimiser.zero_grad(set_to_none=True)
-            with torch.amp.autocast("cuda", enabled=scaler.is_enabled()):
+            with autocast("cuda", enabled=scaler.is_enabled()):
                 loss, _ = loss_fn(model(features), target, valid)
             scaler.scale(loss).backward()
             scaler.step(optimiser)
@@ -318,10 +325,11 @@ def main(argv: list[str] | None = None) -> int:
         "device": str(device),
         "finished_at": datetime.now(UTC).isoformat(),
         "history": asdict(history),
-        # os.path.relpath, not Path.relative_to: the output directory is often
+        # relative_to_repo, not Path.relative_to: the output directory is often
         # outside the checkout (a scratch dir, a mounted drive, Kaggle working),
-        # and relative_to raises there instead of falling back.
-        "checkpoint": (os.path.relpath(best_path, REPO_ROOT) if best_path.exists() else None),
+        # where relative_to raises instead of falling back -- and the recorded
+        # path has to be readable on Linux whatever platform trained the model.
+        "checkpoint": (relative_to_repo(best_path) if best_path.exists() else None),
         "caveats": [
             "Validation IoU is on a held-out REGION, not a random chip split.",
             "This is a validation score, not a test score. Run ml/flood/evaluate.py "

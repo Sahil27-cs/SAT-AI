@@ -81,7 +81,13 @@ def stack_with_ratio(
     return np.concatenate([features, ratio[None, ...]], axis=0)
 
 
-class FloodChips(Dataset):
+#: What one item of :class:`FloodChips` is: ``(features, target, valid)``.
+#: Named so the `Dataset` and `DataLoader` generics stay readable wherever
+#: they are annotated.
+FloodBatch = tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+
+
+class FloodChips(Dataset[FloodBatch]):
     """One Sen1Floods11 partition, as tensors.
 
     Yields ``(features, target, valid)``:
@@ -124,7 +130,7 @@ class FloodChips(Dataset):
     def __len__(self) -> int:
         return len(self.chips)
 
-    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(self, index: int) -> FloodBatch:
         chip = self.chips[index]
         features, labels, valid = self.reader.load(chip)
 

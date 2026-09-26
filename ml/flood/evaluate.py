@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from satai.paths import REPO_ROOT
+    from satai.paths import REPO_ROOT, relative_to_repo
 except ImportError:  # pragma: no cover - outside an installed package
     _candidates: list[Path] = []
     if os.environ.get("SATAI_REPO_ROOT"):
@@ -46,11 +46,16 @@ except ImportError:  # pragma: no cover - outside an installed package
     REPO_ROOT = next((c for c in _candidates if (c / "satai" / "provenance.py").is_file()), _cwd)
     sys.path.insert(0, str(REPO_ROOT))
 
+    # The root is on the path now, so the real helper is importable. Importing it
+    # here rather than reimplementing it keeps one definition of what a recorded
+    # path looks like.
+    from satai.paths import relative_to_repo
+
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from ml.flood.dataset import FloodChips
+from ml.flood.dataset import FloodBatch, FloodChips
 from ml.flood.model import UNet, UNetSpec
 from ml.flood.train import select_fold
 from satai.ml.metrics import SegmentationMetrics, aggregate, evaluate
@@ -83,7 +88,7 @@ def load_checkpoint(
 
 @torch.no_grad()
 def score(
-    model: UNet, loader: DataLoader, device: torch.device, thresholds: tuple[float, ...]
+    model: UNet, loader: DataLoader[FloodBatch], device: torch.device, thresholds: tuple[float, ...]
 ) -> tuple[dict[float, SegmentationMetrics], list[dict[str, Any]]]:
     """Pooled metrics at each threshold, plus a per-chip record."""
     per_threshold: dict[float, list[SegmentationMetrics]] = {t: [] for t in thresholds}
@@ -170,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     report = {
         "experiment": "flood_unet_test",
         "run_at": datetime.now(UTC).isoformat(),
-        "checkpoint": os.path.relpath(args.checkpoint, REPO_ROOT),
+        "checkpoint": relative_to_repo(args.checkpoint),
         "fold": fold_name,
         "partition": args.partition,
         "protocol": "leave_one_region_out",
@@ -244,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
             f"  per-chip IoU  median {np.median(ious):.3f}  "
             f"IQR [{np.percentile(ious, 25):.3f}, {np.percentile(ious, 75):.3f}]"
         )
-    print(f"written to {destination}")
+    print(f"written to {relative_to_repo(destination)}")
     return 0
 
 

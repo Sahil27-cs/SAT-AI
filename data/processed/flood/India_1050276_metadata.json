@@ -1,0 +1,28 @@
+{
+  "chip": "India_1050276",
+  "region": "India",
+  "source_kind": "model",
+  "model": "flood_unet",
+  "model_version": "1.0.0+loro_india",
+  "checkpoint": "models/flood/flood_unet_loro_india_sar_ratio_best.pt",
+  "trained_fold": "loro_india",
+  "bands": [
+    "vv_db",
+    "vh_db",
+    "vv_vh_ratio"
+  ],
+  "threshold": 0.5,
+  "computed_at": "2026-09-26T19:45:59.243102+00:00",
+  "flooded_area_km2": 1.9849,
+  "observed_area_km2": 22.7447,
+  "flooded_fraction_of_observed": 0.0873,
+  "valid_pixel_fraction": 0.9735,
+  "n_polygons": 117,
+  "pixel_area_method": "cosine_latitude",
+  "caveats": [
+    "Model output, not an observation. The satellite measured backscatter; the flood extent is this model's interpretation of it.",
+    "SAT-AI prototype output. NOT an official warning. Official warnings for India come from IMD, NDMA and State Disaster Management Authorities.",
+    "Known failure mode: urban double-bounce RAISES backscatter over flooded streets, inverting the signature this model relies on.",
+    "Areas use a cosine-latitude pixel-size correction; the grid is geographic, so a square degree is not a square kilometre."
+  ]
+}

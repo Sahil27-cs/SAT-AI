@@ -33,7 +33,15 @@ _BACKEND = Path(__file__).resolve().parents[1] / "backend" / "api"
 
 
 def _load_mirror() -> Any:
-    """Import the backend mirror without shadowing the `satai` package."""
+    """Import the backend mirror without shadowing the `satai` package.
+
+    `backend/api` goes on the path because that directory *is* the import root
+    on Vercel, so the mirror imports its siblings flatly (`from agent_tools
+    import ...`). Appended rather than inserted: the point is to reproduce the
+    deployment's import environment, not to let it shadow `satai`.
+    """
+    if str(_BACKEND) not in sys.path:
+        sys.path.append(str(_BACKEND))
     spec = importlib.util.spec_from_file_location(
         "satai_agents_parity", _BACKEND / "satai_agents.py"
     )

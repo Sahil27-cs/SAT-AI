@@ -1,7 +1,7 @@
 {
   "experiment": "flood_unet_test",
-  "run_at": "2026-09-26T19:03:21.816285+00:00",
-  "checkpoint": "models\\flood\\flood_unet_loro_india_sar_ratio_best.pt",
+  "run_at": "2026-09-26T19:44:59.175965+00:00",
+  "checkpoint": "models/flood/flood_unet_loro_india_sar_ratio_best.pt",
   "fold": "loro_india",
   "partition": "test",
   "protocol": "leave_one_region_out",

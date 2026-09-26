@@ -1,8 +1,14 @@
 # ADR-005: Opus 5 for reasoning, a small model for routing
 
-- **Status:** Accepted
+- **Status:** **Superseded by [ADR-011](ADR-011-google-gemini-for-the-agent-plane.md)** (2026-09-26)
 - **Date:** 2026-09-22
 - **Phase:** 1
+
+> The agent plane now runs on Google Gemini with native function calling. This
+> record is left as written: it is what was decided on 2026-09-22 and why, and
+> the constraints it reasons about — no model identifier at a call site, a
+> deterministic router that needs no network, a grounding validator over the
+> generated text — all carried over. Read ADR-011 for what is deployed.
 
 ## Context
 

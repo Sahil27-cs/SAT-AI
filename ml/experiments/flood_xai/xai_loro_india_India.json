@@ -1,0 +1,224 @@
+{
+  "experiment": "flood_xai",
+  "run_at": "2026-09-26T19:45:48.465260+00:00",
+  "checkpoint": "models/flood/flood_unet_loro_india_sar_ratio_best.pt",
+  "model": "flood_unet",
+  "model_version": "1.0.0+loro_india",
+  "source_kind": "derived",
+  "region": "India",
+  "n_chips": 12,
+  "bands": [
+    "vv_db",
+    "vh_db",
+    "vv_vh_ratio"
+  ],
+  "methods": {
+    "integrated_gradients": {
+      "steps": 32,
+      "baseline": "all-zero normalised input, i.e. the per-band mean",
+      "target": "mean predicted water probability over annotated pixels"
+    },
+    "occlusion": {
+      "operation": "set one band to its mean, measure the shift in mean probability"
+    }
+  },
+  "mean_integrated_gradients": {
+    "vv_db": -0.211021,
+    "vh_db": -0.119268,
+    "vv_vh_ratio": -0.378505
+  },
+  "attribution_share": {
+    "vv_db": -0.2977,
+    "vh_db": -0.1683,
+    "vv_vh_ratio": -0.534
+  },
+  "mean_occlusion_delta": {
+    "vv_db": -0.026202,
+    "vh_db": -0.176603,
+    "vv_vh_ratio": 0.06372
+  },
+  "per_chip": [
+    {
+      "chip": "India_1017769",
+      "mean_probability": 0.7025,
+      "integrated_gradients": {
+        "vv_db": -0.493837,
+        "vh_db": 0.449964,
+        "vv_vh_ratio": -0.296176
+      },
+      "occlusion_delta": {
+        "vv_db": -0.012261,
+        "vh_db": -0.619859,
+        "vv_vh_ratio": 0.020759
+      }
+    },
+    {
+      "chip": "India_1018317",
+      "mean_probability": 0.8728,
+      "integrated_gradients": {
+        "vv_db": -0.419247,
+        "vh_db": 0.835893,
+        "vv_vh_ratio": -0.10401
+      },
+      "occlusion_delta": {
+        "vv_db": -0.004911,
+        "vh_db": -0.796595,
+        "vv_vh_ratio": 0.024932
+      }
+    },
+    {
+      "chip": "India_1018327",
+      "mean_probability": 0.1263,
+      "integrated_gradients": {
+        "vv_db": -0.156994,
+        "vh_db": -0.276614,
+        "vv_vh_ratio": -0.409464
+      },
+      "occlusion_delta": {
+        "vv_db": -0.029804,
+        "vh_db": -0.089131,
+        "vv_vh_ratio": 0.033098
+      }
+    },
+    {
+      "chip": "India_103447",
+      "mean_probability": 0.1836,
+      "integrated_gradients": {
+        "vv_db": -0.184474,
+        "vh_db": -0.122993,
+        "vv_vh_ratio": -0.430741
+      },
+      "occlusion_delta": {
+        "vv_db": -0.009263,
+        "vh_db": -0.144119,
+        "vv_vh_ratio": 0.081902
+      }
+    },
+    {
+      "chip": "India_1050276",
+      "mean_probability": 0.1291,
+      "integrated_gradients": {
+        "vv_db": -0.160115,
+        "vh_db": -0.182411,
+        "vv_vh_ratio": -0.493847
+      },
+      "occlusion_delta": {
+        "vv_db": -0.043113,
+        "vh_db": -0.09187,
+        "vv_vh_ratio": 0.126853
+      }
+    },
+    {
+      "chip": "India_1068117",
+      "mean_probability": 0.1765,
+      "integrated_gradients": {
+        "vv_db": -0.165047,
+        "vh_db": -0.192349,
+        "vv_vh_ratio": -0.414128
+      },
+      "occlusion_delta": {
+        "vv_db": -0.041814,
+        "vh_db": -0.136149,
+        "vv_vh_ratio": 0.042446
+      }
+    },
+    {
+      "chip": "India_1072277",
+      "mean_probability": 0.0514,
+      "integrated_gradients": {
+        "vv_db": -0.16423,
+        "vh_db": -0.287636,
+        "vv_vh_ratio": -0.46586
+      },
+      "occlusion_delta": {
+        "vv_db": -0.01302,
+        "vh_db": -0.015252,
+        "vv_vh_ratio": 0.178913
+      }
+    },
+    {
+      "chip": "India_118868",
+      "mean_probability": 0.0565,
+      "integrated_gradients": {
+        "vv_db": -0.16825,
+        "vh_db": -0.415946,
+        "vv_vh_ratio": -0.329148
+      },
+      "occlusion_delta": {
+        "vv_db": -0.017406,
+        "vh_db": -0.011079,
+        "vv_vh_ratio": 0.023856
+      }
+    },
+    {
+      "chip": "India_135434",
+      "mean_probability": 0.1151,
+      "integrated_gradients": {
+        "vv_db": -0.14601,
+        "vh_db": -0.228598,
+        "vv_vh_ratio": -0.438149
+      },
+      "occlusion_delta": {
+        "vv_db": -0.010622,
+        "vh_db": -0.078922,
+        "vv_vh_ratio": 0.073104
+      }
+    },
+    {
+      "chip": "India_136196",
+      "mean_probability": 0.1547,
+      "integrated_gradients": {
+        "vv_db": -0.172962,
+        "vh_db": -0.300902,
+        "vv_vh_ratio": -0.327724
+      },
+      "occlusion_delta": {
+        "vv_db": -0.106375,
+        "vh_db": -0.116503,
+        "vv_vh_ratio": 0.025543
+      }
+    },
+    {
+      "chip": "India_164336",
+      "mean_probability": 0.0443,
+      "integrated_gradients": {
+        "vv_db": -0.170596,
+        "vh_db": -0.365827,
+        "vv_vh_ratio": -0.386251
+      },
+      "occlusion_delta": {
+        "vv_db": -0.012071,
+        "vh_db": -0.009253,
+        "vv_vh_ratio": 0.072609
+      }
+    },
+    {
+      "chip": "India_166709",
+      "mean_probability": 0.0444,
+      "integrated_gradients": {
+        "vv_db": -0.130491,
+        "vh_db": -0.343799,
+        "vv_vh_ratio": -0.446556
+      },
+      "occlusion_delta": {
+        "vv_db": -0.013769,
+        "vh_db": -0.010509,
+        "vv_vh_ratio": 0.060626
+      }
+    }
+  ],
+  "cross_reference_c2": {
+    "note": "High attribution does not mean necessary. C2 removed the highest-attributed band and measured the cost; compare the share below against the delta C2 reports.",
+    "highest_attributed_band": "vv_vh_ratio",
+    "c2_report": "ml/experiments/c2_modality_ablation.json"
+  },
+  "methods_disagree_on": [
+    "vv_vh_ratio"
+  ],
+  "caveats": [
+    "Attribution describes what the model used, not physical causation. A band may rank high because it carries signal or because it correlates with something that does.",
+    "This is a MODEL EXPLANATION. It is not an explanation of the flood, and it is not the natural-language summary the assistant produces.",
+    "Integrated gradients and occlusion answer slightly different questions and can disagree. Where they do, that disagreement is information about the model, not an error in either method.",
+    "Grad-CAM is not used: a segmentation model already outputs a per-pixel map, so a coarse spatial heatmap over it adds nothing."
+  ]
+}

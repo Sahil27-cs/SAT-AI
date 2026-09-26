@@ -20,6 +20,8 @@ near-empty, which is exactly where training starts.
 
 from __future__ import annotations
 
+from typing import cast
+
 import torch
 from torch import nn
 
@@ -61,7 +63,7 @@ def masked_dice(
     intersection = (probabilities * truth).sum(dim=(1, 2, 3))
     cardinality = probabilities.sum(dim=(1, 2, 3)) + truth.sum(dim=(1, 2, 3))
     dice = (2.0 * intersection + smooth) / (cardinality + smooth)
-    return 1.0 - dice.mean()
+    return cast(torch.Tensor, 1.0 - dice.mean())
 
 
 class FloodLoss(nn.Module):

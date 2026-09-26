@@ -872,8 +872,9 @@ export default function Page() {
             <div className="panel">
               <div className="panel-title">Colophon</div>
               <p className="muted">
-                Next.js on Vercel · FastAPI serving plane · PostgreSQL + PostGIS · Claude Opus 5
-                reasoning with Haiku 4.5 routing. Data: Copernicus Sentinel-1/2, Copernicus DEM,
+                Next.js on Vercel · FastAPI serving plane · PostgreSQL + PostGIS · Google Gemini
+                with native function calling, over a deterministic router that needs no model.
+                Data: Copernicus Sentinel-1/2, Copernicus DEM,
                 NASA GPM IMERG, ERA5, NASA FIRMS, IBTrACS, WorldPop, GHSL, OpenStreetMap, Sen1Floods11.
               </p>
             </div>

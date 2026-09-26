@@ -103,10 +103,28 @@ operator needs to know is what happens on the day the optical scene is
 cloud-covered or the DEM has a void — which is most days. The corpus does not
 report that curve for this task.
 
-**Status.** Not implemented. It depends on the flood model, which is not
-written — there is no `unet.py` and no training loop in this repository. The
-evaluation layer it would be scored with (`satai/ml/metrics.py`) exists and is
-tested. `[RESULT TO BE GENERATED]`
+**Status. Partially executed — 2 of 5 arms.** The flood model exists and is
+trained (`ml/flood/`), and the ablation runner
+(`ml/experiments/run_modality_ablation.py`) holds seed, schedule, augmentation,
+training fold and selection region fixed so that the arms differ only in the
+input band stack.
+
+**Measured so far.** SAR (VV, VH) scores IoU **0.5211** on held-out India; SAR
+plus the derived VV−VH dB ratio scores **0.5230**. Removing the ratio band
+therefore costs **0.0019 IoU** — smaller than the spread between regions, and
+plausibly smaller than a seed difference. A negative result, reported as one.
+
+**What makes it interesting rather than merely small.** Integrated gradients
+assign that same ratio band a **53.4 % attribution share**, the largest of the
+three, and integrated gradients and occlusion disagree on its sign. High
+attribution is not necessity — which is the entire reason this contribution
+removes a band and measures, instead of reading an attribution chart and
+calling the result an explanation.
+
+**Still blocked.** The three remaining arms need co-registered rainfall (GPM
+IMERG per chip acquisition window) and terrain (Copernicus DEM GLO-30 per chip
+footprint, plus a HAND derivation). Neither ships with Sen1Floods11.
+`[RESULT TO BE GENERATED]` for `sar_rain`, `sar_dem` and `full`.
 
 ---
 
@@ -120,9 +138,14 @@ between building walls and standing water raises backscatter where the method
 expects a drop, so the signature inverts. The *magnitude*, in India, on a
 leave-one-region-out protocol, is not published.
 
-**Status.** Not implemented, for the same reason as C2. The precondition for
-trusting any cross-track number — the Track A/B distribution gate — *is* built
-and tested (`satai/ml/distribution_gate.py`). `[RESULT TO BE GENERATED]`
+**Status. Blocked on the target, no longer on the code.** The flood model is
+trained and its scoring path is in place (`ml/flood/evaluate.py`), and the
+precondition for trusting any cross-track number — the Track A/B distribution
+gate — is built and tested (`satai/ml/distribution_gate.py`).
+
+What is missing is labelled urban Indian flood imagery. Sen1Floods11's India
+chips are not urban, and running the model over an unlabelled urban scene would
+produce a map and no measurement. `[RESULT TO BE GENERATED]`
 
 ---
 
