@@ -1,0 +1,102 @@
+{
+  "experiment": "flood_baseline_threshold_selection",
+  "run_at": "2026-09-26T16:49:14.515512+00:00",
+  "method": "Otsu on Sentinel-1 VV, no HAND terrain mask",
+  "dataset": "Sen1Floods11 v1.1 HandLabeled, 441 chips scored across 11 regions",
+  "protocol": "Leave-one-region-out selection of the separability guard: for each region, the guard is chosen on the other ten and applied to the held-out one. Confusion counts pooled, not averaged.",
+  "curve_all_data": {
+    "0.0": 0.1837,
+    "0.5": 0.1848,
+    "0.6": 0.2093,
+    "0.637": 0.3662,
+    "0.66": 0.4199,
+    "0.68": 0.4163,
+    "0.7": 0.4069,
+    "0.72": 0.3627,
+    "0.75": 0.3121,
+    "0.78": 0.204,
+    "0.8": 0.1522,
+    "0.85": 0.0306
+  },
+  "naive_all_data_best": {
+    "min_separability": 0.66,
+    "iou": 0.4199,
+    "warning": "This is the maximum of a curve fitted to the evaluation set. It is NOT a generalisation estimate and must not be reported as the baseline's score."
+  },
+  "loro_selected": {
+    "Bolivia": {
+      "selected_min_separability": 0.66,
+      "selection_iou_on_other_regions": 0.4113,
+      "held_out_iou": 0.6081,
+      "n_chips": 15
+    },
+    "Ghana": {
+      "selected_min_separability": 0.66,
+      "selection_iou_on_other_regions": 0.4203,
+      "held_out_iou": 0.4119,
+      "n_chips": 48
+    },
+    "India": {
+      "selected_min_separability": 0.66,
+      "selection_iou_on_other_regions": 0.4295,
+      "held_out_iou": 0.3754,
+      "n_chips": 68
+    },
+    "Mekong": {
+      "selected_min_separability": 0.66,
+      "selection_iou_on_other_regions": 0.3573,
+      "held_out_iou": 0.7902,
+      "n_chips": 30
+    },
+    "Nigeria": {
+      "selected_min_separability": 0.66,
+      "selection_iou_on_other_regions": 0.4071,
+      "held_out_iou": 0.5657,
+      "n_chips": 18
+    },
+    "Pakistan": {
+      "selected_min_separability": 0.66,
+      "selection_iou_on_other_regions": 0.4331,
+      "held_out_iou": 0.1929,
+      "n_chips": 28
+    },
+    "Paraguay": {
+      "selected_min_separability": 0.66,
+      "selection_iou_on_other_regions": 0.4263,
+      "held_out_iou": 0.3758,
+      "n_chips": 67
+    },
+    "Somalia": {
+      "selected_min_separability": 0.66,
+      "selection_iou_on_other_regions": 0.4331,
+      "held_out_iou": 0.0,
+      "n_chips": 26
+    },
+    "Spain": {
+      "selected_min_separability": 0.66,
+      "selection_iou_on_other_regions": 0.4043,
+      "held_out_iou": 0.5832,
+      "n_chips": 30
+    },
+    "Sri-Lanka": {
+      "selected_min_separability": 0.66,
+      "selection_iou_on_other_regions": 0.4585,
+      "held_out_iou": 0.1,
+      "n_chips": 42
+    },
+    "USA": {
+      "selected_min_separability": 0.66,
+      "selection_iou_on_other_regions": 0.4353,
+      "held_out_iou": 0.2699,
+      "n_chips": 69
+    }
+  },
+  "headline": {
+    "iou": 0.4199,
+    "optimism_of_naive_protocol": 0.0
+  },
+  "caveats": [
+    "No HAND raster ships with Sen1Floods11 HandLabeled, so the terrain mask that removes Otsu's false positives is absent. This is a lower bound on the method as operationally deployed.",
+    "The guard is the only tuned quantity; Otsu itself is unsupervised and derives its threshold per chip."
+  ]
+}

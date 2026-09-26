@@ -1,0 +1,154 @@
+{
+  "experiment": "flood_baseline_otsu",
+  "run_at": "2026-09-26T16:46:30.146489+00:00",
+  "method": "Otsu threshold on band 0 (VV), no HAND terrain mask",
+  "dataset": "Sen1Floods11 v1.1 HandLabeled",
+  "n_chips_scored": 441,
+  "n_chips_skipped": 5,
+  "min_separability": 0.6,
+  "caveats": [
+    "No HAND raster ships with Sen1Floods11 HandLabeled, so the terrain mask that removes Otsu's false positives over tarmac, dry sand and smooth bare soil is absent. These are a LOWER BOUND on the method.",
+    "Unannotated pixels (label -1) are excluded from the confusion counts.",
+    "Per-region scores are pooled over chips by summing confusion counts, not by averaging per-chip scores -- averaging lets a chip with three water pixels weigh as much as one that is half flooded."
+  ],
+  "per_region": {
+    "Bolivia": {
+      "n_chips": 15,
+      "iou": 0.4433,
+      "f1": 0.6142,
+      "precision": 0.5406,
+      "recall": 0.7112,
+      "chips_called_unimodal": 7,
+      "tp": 323488,
+      "fp": 274936,
+      "fn": 131376,
+      "tn": 2138015
+    },
+    "Ghana": {
+      "n_chips": 48,
+      "iou": 0.0985,
+      "f1": 0.1793,
+      "precision": 0.1076,
+      "recall": 0.5386,
+      "chips_called_unimodal": 11,
+      "tp": 311128,
+      "fp": 2580967,
+      "fn": 266580,
+      "tn": 6035399
+    },
+    "India": {
+      "n_chips": 68,
+      "iou": 0.2486,
+      "f1": 0.3982,
+      "precision": 0.3107,
+      "recall": 0.5544,
+      "chips_called_unimodal": 34,
+      "tp": 1028739,
+      "fp": 2282665,
+      "fn": 826953,
+      "tn": 10840236
+    },
+    "Mekong": {
+      "n_chips": 30,
+      "iou": 0.5319,
+      "f1": 0.6944,
+      "precision": 0.5991,
+      "recall": 0.8258,
+      "chips_called_unimodal": 4,
+      "tp": 1420527,
+      "fp": 950566,
+      "fn": 299657,
+      "tn": 4460432
+    },
+    "Nigeria": {
+      "n_chips": 18,
+      "iou": 0.3057,
+      "f1": 0.4682,
+      "precision": 0.379,
+      "recall": 0.6124,
+      "chips_called_unimodal": 2,
+      "tp": 580778,
+      "fp": 951619,
+      "fn": 367553,
+      "tn": 2143197
+    },
+    "Pakistan": {
+      "n_chips": 28,
+      "iou": 0.1259,
+      "f1": 0.2236,
+      "precision": 0.1377,
+      "recall": 0.5949,
+      "chips_called_unimodal": 5,
+      "tp": 239818,
+      "fp": 1502356,
+      "fn": 163289,
+      "tn": 3471132
+    },
+    "Paraguay": {
+      "n_chips": 67,
+      "iou": 0.1297,
+      "f1": 0.2296,
+      "precision": 0.1441,
+      "recall": 0.565,
+      "chips_called_unimodal": 8,
+      "tp": 790525,
+      "fp": 4695839,
+      "fn": 608614,
+      "tn": 10584122
+    },
+    "Somalia": {
+      "n_chips": 26,
+      "iou": 0.0919,
+      "f1": 0.1684,
+      "precision": 0.098,
+      "recall": 0.5971,
+      "chips_called_unimodal": 0,
+      "tp": 208897,
+      "fp": 1922314,
+      "fn": 140972,
+      "tn": 3103216
+    },
+    "Spain": {
+      "n_chips": 30,
+      "iou": 0.6199,
+      "f1": 0.7653,
+      "precision": 0.9218,
+      "recall": 0.6543,
+      "chips_called_unimodal": 22,
+      "tp": 665092,
+      "fp": 56426,
+      "fn": 351408,
+      "tn": 6654876
+    },
+    "Sri-Lanka": {
+      "n_chips": 42,
+      "iou": 0.2057,
+      "f1": 0.3412,
+      "precision": 0.261,
+      "recall": 0.4925,
+      "chips_called_unimodal": 20,
+      "tp": 578904,
+      "fp": 1638962,
+      "fn": 596507,
+      "tn": 7148888
+    },
+    "USA": {
+      "n_chips": 69,
+      "iou": 0.1048,
+      "f1": 0.1897,
+      "precision": 0.1101,
+      "recall": 0.6838,
+      "chips_called_unimodal": 16,
+      "tp": 550307,
+      "fp": 4446254,
+      "fn": 254493,
+      "tn": 12395292
+    }
+  },
+  "pooled": {
+    "iou": 0.2093,
+    "f1": 0.3461,
+    "precision": 0.2392,
+    "recall": 0.6257
+  }
+}

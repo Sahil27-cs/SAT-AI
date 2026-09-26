@@ -128,14 +128,32 @@ class OtsuHandBaseline:
         unimodal (a dry chip) and the baseline predicts no water rather than
         splitting the land distribution in half.
 
-        The default of 0.75 sits between the two reference points: bisecting a
-        single Gaussian explains ``2/pi ~ 0.637``, while a land and a water
-        mode separated by the usual ~10 dB explain over 0.9.
+        The reference points: bisecting a single Gaussian explains
+        ``2/pi ~ 0.637``, while a land and a water mode separated by the usual
+        ~10 dB explain over 0.9. The default sat at 0.75 on that reasoning
+        alone until it was measured.
+
+        **0.66 is now measured, not argued.** Scored over all 446 Sen1Floods11
+        hand-labelled chips, pooled IoU is extremely sensitive to this value --
+        0.184 with the guard off, peaking at 0.420 near 0.66, and collapsing to
+        0.031 by 0.85. With the guard off, precision falls to 0.197: Otsu
+        bisects every dry chip and reports half of it as water, which is exactly
+        the failure this parameter exists to prevent, now observed rather than
+        predicted.
+
+        Selection was leave-one-region-out -- for each of the 11 regions the
+        value was chosen on the other ten and applied to the held-out one -- so
+        this is not the maximum of a curve fitted to the evaluation set. All
+        eleven folds independently chose 0.66, so the region-disjoint estimate
+        and the all-data optimum coincide to four decimal places. A parameter
+        that stable across held-out regions is one worth shipping as a default.
+
+        See ``ml/experiments/flood_baseline/threshold_selection.json``.
     """
 
     band_index: int = 0  # VV
     hand_threshold_m: float = 15.0
-    min_separability: float = 0.75
+    min_separability: float = 0.66
     bins: int = 256
 
     fitted_threshold_: float | None = field(default=None, init=False)

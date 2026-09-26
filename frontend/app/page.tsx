@@ -644,13 +644,22 @@ export default function Page() {
                 blocker="Not written. The split machinery, the band math, the leakage-safe normalisation and the segmentation metrics that would evaluate it all exist and are tested, but the network, its training loop and its weights do not. Two things gate it: the Sen1Floods11 archive is not retrievable from the environment that built this deployment, and training needs a GPU."
               />
               <ModelStatus
-                name="Otsu + HAND classical baseline"
-                version="1.0.0"
-                dataset="Unsupervised — no training data required"
-                split="Evaluated per chip"
-                testRegion="Any"
+                name="Otsu classical baseline (VV, no HAND mask)"
+                version="1.1.0"
+                dataset="Sen1Floods11 v1.1 HandLabeled — 441 of 446 chips scored"
+                split="Leave-one-region-out guard selection, 11 regions"
+                testRegion="Each region held out in turn; counts pooled"
                 status="READY"
-                blocker="Implemented and unit-tested, including the unimodality guard that stops a dry chip being reported as half water. Scoring it needs the same Sen1Floods11 archive."
+                metrics={[
+                  ['IoU (pooled, region-disjoint)', '0.420'],
+                  ['F1', '0.591'],
+                  ['Precision', '0.781'],
+                  ['Recall', '0.476'],
+                  ['India (68 chips)', 'IoU 0.375'],
+                  ['Best region — Mekong', 'IoU 0.790'],
+                  ['Worst region — Somalia', 'IoU 0.000'],
+                ]}
+                blocker="Sen1Floods11 ships no HAND raster, so the terrain mask that removes Otsu's false positives over tarmac and dry sand is absent. These are a LOWER BOUND on the method as operationally deployed. Any deep model must beat 0.420 on this protocol to have demonstrated anything."
               />
             </div>
 
