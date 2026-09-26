@@ -22,20 +22,42 @@ reportable result.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import os
 import sys
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
+# Bootstrap. `satai.paths` is the canonical resolver, but it cannot be imported
+# until the package is importable — so when it is not (a fresh notebook that has
+# not run `pip install -e .`), a minimal inline search finds the checkout and
+# puts it on the path. `__file__` is wrapped because Jupyter, Colab and Kaggle
+# do not define it, and a GPU notebook is exactly where this script runs.
+try:
+    from satai.paths import REPO_ROOT, in_notebook
+except ImportError:  # pragma: no cover - exercised only outside an installed package
+    _candidates: list[Path] = []
+    if os.environ.get("SATAI_REPO_ROOT"):
+        _candidates.append(Path(os.environ["SATAI_REPO_ROOT"]).expanduser().resolve())
+    # Suppressed rather than guarded: `__file__` is simply absent in a notebook,
+    # which is the expected case here, not an error worth branching on.
+    with contextlib.suppress(NameError):
+        _candidates.append(Path(__file__).resolve().parents[2])
+    _cwd = Path.cwd().resolve()
+    _candidates += [_cwd, *_cwd.parents, *(p for p in sorted(_cwd.iterdir()) if p.is_dir())]
+    REPO_ROOT = next(
+        (c for c in _candidates if (c / "satai" / "provenance.py").is_file()),
+        _cwd,
+    )
     sys.path.insert(0, str(REPO_ROOT))
+    from satai.paths import in_notebook
 
-from satai.errors import ValidationError  # noqa: E402
-from satai.logging import get_logger  # noqa: E402
-from satai.ml.unet import BAND_PRESETS, FloodUNetConfig, build_model, torch_available  # noqa: E402
+from satai.errors import ValidationError
+from satai.logging import get_logger
+from satai.ml.unet import BAND_PRESETS, FloodUNetConfig, build_model, torch_available
 
 log = get_logger(__name__)
 
@@ -58,6 +80,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Validate the configuration and the split, then stop without training.",
     )
+
+    if argv is None and in_notebook():
+        # A kernel's sys.argv carries its own flags (-f /.../kernel-xxx.json),
+        # which argparse rejects with an unrelated-looking error. Say what to do
+        # instead of letting the parser complain about a file nobody passed.
+        raise ValidationError(
+            "Running under a notebook kernel: pass arguments explicitly rather "
+            "than relying on sys.argv. For example:\n"
+            "    main(['--chips', '/kaggle/input/sen1floods11/chips', "
+            "'--preset', 'sar_ratio', '--fold', 'loro_india'])"
+        )
     return parser.parse_args(argv)
 
 
