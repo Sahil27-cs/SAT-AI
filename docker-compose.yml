@@ -1,0 +1,98 @@
+# Local development infrastructure.
+#
+#   docker compose up -d        start
+#   docker compose logs -f db   watch
+#   docker compose down         stop (data survives in the named volume)
+#   docker compose down -v      stop and DESTROY the data
+#
+# PostGIS and the serving plane. The ML plane is absent on purpose: it needs a
+# GPU and a conda geospatial stack, and a container that cannot run the model it
+# carries is worse than no container. See backend/Dockerfile.
+#
+# Why Docker for the database but conda for Python (ADR-004): a database is a
+# service with a fixed interface, which is exactly what containers are good at.
+# Day-to-day Python work wants a native debugger and fast notebook iteration.
+
+services:
+  api:
+    build:
+      context: ./backend
+    container_name: satai-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # The API speaks PostgREST over HTTP, not the Postgres wire protocol --
+      # backend/requirements.txt carries no driver, deliberately, because the
+      # serving plane runs on Vercel where a pooled connection is a liability.
+      # So it does NOT talk to the `db` service below. Unset, it falls back to
+      # the hosted demo catalogue and says so in its logs.
+      #
+      # To point it at the local stack you need PostgREST in front of Postgres;
+      # `db` here exists for psql, Adminer and the batch plane, not for this
+      # container.
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      # Defaults to the local frontend origin, not a wildcard. A container that
+      # is reachable from any origin because nobody set a variable is the wrong
+      # default even in development, where it is most likely to be copied.
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000}
+      API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-20}
+      # Unset by default: with no key the chat endpoint degrades to structured
+      # tool output and says so, which is the documented behaviour.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Also unset by default. Without it the C1 audit log is disabled rather
+      # than half-working, and /health reports which.
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+
+
+  db:
+    # PostGIS 3.4 on PostgreSQL 16, matching the target managed hosts
+    # (Neon / Supabase) so local and production dialects agree.
+    image: postgis/postgis:16-3.4
+    container_name: satai-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: satai
+      POSTGRES_PASSWORD: satai        # local only; production uses a real secret
+      POSTGRES_DB: satai
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - satai-pgdata:/var/lib/postgresql/data
+      # Runs once, on first initialisation, in filename order -- which is why
+      # the migrations are numbered. This previously pointed at an empty `init`
+      # directory while the schema sat one level up, so `docker compose up`
+      # produced a database with no tables in it and no error to say so.
+      #
+      # Only applies to a FRESH volume. After changing a migration:
+      #   docker compose down -v && docker compose up -d
+      - ./backend/app/db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U satai -d satai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    shm_size: 256mb                   # PostGIS spatial joins need shared memory
+
+  # Optional: a browser-based database client, handy for inspecting geometries
+  # without installing pgAdmin. Start with: docker compose --profile tools up -d
+  adminer:
+    image: adminer:4
+    container_name: satai-adminer
+    restart: unless-stopped
+    profiles: ["tools"]
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  satai-pgdata:
+    name: satai-pgdata

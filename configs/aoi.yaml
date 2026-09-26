@@ -1,0 +1,102 @@
+# ===========================================================================
+# SAT-AI study areas
+#
+# STATUS IS "candidate" FOR EVERY ENTRY ON PURPOSE.
+#
+# Phase 2 selects the operational AOI on measured evidence -- Sentinel-1 scene
+# counts over the window, label coverage, cloud statistics, hazard recurrence --
+# not on familiarity or convenience. `scripts/` in Phase 2 will query the
+# catalogues, print the comparison table, and only then will an entry here be
+# promoted to status: selected.
+#
+# Selection criteria, in weight order (docs/adr/ADR-007 will record the result):
+#   1. Labelled ground truth exists        <- dominant; without it there is no
+#                                             supervised model, only transfer
+#   2. Sentinel-1 acquisition density
+#   3. Hazard recurrence
+#   4. Exposure / societal relevance
+#   5. Tile count within compute budget
+# ===========================================================================
+version: "0.1.0"
+
+aois:
+  - id: bihar_ganga
+    name: "Middle Ganga plain, Bihar"
+    country: India
+    # ~150 x 110 km around Patna. Deliberately narrower than the full Bihar
+    # flood belt so the tile count stays inside a student compute budget.
+    bbox: [85.0, 25.2, 86.5, 26.2]
+    primary_hazards: [flood]
+    status: candidate
+    label_sources:
+      - "Sen1Floods11 (contains an India event; exact site to be VERIFIED at ingestion, Phase 2)"
+      - "Copernicus EMS rapid mapping activations (per-event)"
+    selection_rationale: >
+      Leading candidate because Sen1Floods11 reportedly includes an India flood
+      event in the Ganga plain, which would place hand-labelled Sentinel-1 water
+      masks inside the target region. That resolves the single hardest problem in
+      the project -- ground truth. Terrain is flat, so SAR backscatter is not
+      confounded by slope or layover, giving the cleanest possible flood signal.
+      Flooding recurs annually during the monsoon, so multiple independent events
+      are available for temporal validation. Exposure is high and rural, which
+      complements the urban Mumbai case.
+    notes: >
+      VERIFY IN PHASE 2 before relying on this: list the actual event codes in the
+      downloaded Sen1Floods11 metadata and confirm both the presence and the exact
+      footprint of the India site. Do not write "includes India" in the report
+      until the file listing says so.
+
+  - id: mumbai_mmr
+    name: "Mumbai Metropolitan Region"
+    country: India
+    bbox: [72.75, 18.85, 73.20, 19.35]
+    primary_hazards: [flood, cyclone]
+    status: candidate
+    label_sources:
+      - "Copernicus EMS activations (event-dependent)"
+      - "None dense enough for supervised training -- transfer target only"
+    selection_rationale: >
+      Selected as a deliberate stress case rather than a training region. SAR
+      flood detection is known to degrade badly in dense urban settings, where
+      double-bounce between buildings and standing water *raises* backscatter
+      instead of lowering it, inverting the physical signal the model relies on.
+      Applying a model trained on rural Bihar to Mumbai and quantifying the drop
+      is a reportable domain-transfer result, not a failure. Annual monsoon
+      flooding, very high exposure, and cyclone-adjacent coastline.
+    notes: >
+      Expect poor IoU here relative to rural AOIs. That is the finding, and it
+      must be reported rather than tuned away.
+
+  - id: assam_brahmaputra
+    name: "Brahmaputra valley, Assam"
+    country: India
+    bbox: [91.0, 26.0, 93.0, 26.9]
+    primary_hazards: [flood]
+    status: candidate
+    label_sources:
+      - "Copernicus EMS activations"
+      - "UNOSAT flood extents (event-dependent)"
+    selection_rationale: >
+      Highest flood recurrence in India and excellent Sentinel-1 coverage, with
+      large, radiometrically clean water bodies. Included as a third AOI if the
+      compute budget allows, primarily to test spatial generalisation across
+      river systems with different channel morphology.
+
+  - id: kerala_periyar
+    name: "Periyar and Chalakudy basins, Kerala"
+    country: India
+    bbox: [76.2, 9.9, 76.9, 10.5]
+    primary_hazards: [flood]
+    status: candidate
+    label_sources:
+      - "Copernicus EMS activations for the August 2018 Kerala floods"
+    selection_rationale: >
+      Well-documented, internationally mapped 2018 flood event with independent
+      reference delineations. Steep terrain makes it the hardest SAR case of the
+      four (layover, shadow, slope-driven false negatives), which makes it a
+      useful adversarial test rather than a training region.
+
+  # ---------------------------------------------------------------------
+  # Wildfire and cyclone AOIs are added in Phases 16-17 and 20. Adding them
+  # now would imply a scope commitment the project has not yet earned.
+  # ---------------------------------------------------------------------

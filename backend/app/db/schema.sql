@@ -1,0 +1,17 @@
+-- MOVED — this file is no longer the schema definition.
+--
+-- The DDL that used to live here created unprefixed tables in the default
+-- schema, while the deployed database holds them in a `satai` schema behind a
+-- prefixed read-only view surface in `public`. Two definitions of the same
+-- schema, only one of which matched production, and nothing forced them to
+-- agree. Anyone standing the project up from a clone got the wrong one.
+--
+-- There is now one definition, applied in filename order:
+--
+--   migrations/001_schema.sql                 tables, indexes, the latest-result view
+--   migrations/002_public_read_views.sql      the `satai_`-prefixed read surface
+--   migrations/003_anon_read_grants_and_rls.sql  grants and row-level security
+--
+-- Those three files are what `docker compose up` mounts into the Postgres init
+-- directory, and what should be applied to a managed instance. See
+-- docs/deployment.md for the access model they implement.

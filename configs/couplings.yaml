@@ -1,0 +1,80 @@
+# ===========================================================================
+# Physically-justified hazard couplings
+#
+# A compound-risk term is permitted ONLY for a pair of hazards with a documented
+# physical mechanism linking them. Co-occurrence in a time window is not a
+# mechanism. Correlation in a dataset is not a mechanism.
+#
+# Every entry must state its mechanism in prose. If the mechanism cannot be
+# written down, the coupling does not go in this file.
+#
+# This is the counterweight to the usual multi-hazard dashboard failure, which
+# sums unrelated hazard scores and calls the result "compound risk".
+# ===========================================================================
+version: "0.1.0"
+
+couplings:
+  - id: cyclone_to_flood
+    from_hazard: cyclone
+    to_hazard: flood
+    enabled: true
+    lag: "0-72h"
+    mechanism: >
+      Tropical cyclones making landfall deliver extreme rainfall over short
+      periods and drive storm surge along the coast. Both raise flood hazard
+      directly and physically: rainfall exceeds drainage capacity inland, surge
+      raises the downstream boundary condition and suppresses river discharge.
+      The causal direction is unambiguous and the lag is short and well
+      characterised in the literature.
+    implementation: >
+      Cyclone rainfall and surge-proxy terms enter the flood hazard modulator as
+      an additive contribution to the antecedent rainfall index, bounded so that
+      the coupled score cannot exceed 1.0.
+    strength: 0.6
+    evidence: "Standard in compound coastal-flood literature. Cite properly in Phase 19."
+
+  - id: burn_to_flood
+    from_hazard: wildfire
+    to_hazard: flood
+    enabled: true
+    lag: "1-24 months"
+    mechanism: >
+      Severe burning removes canopy interception and ground litter and induces
+      soil hydrophobicity, sharply reducing infiltration and increasing runoff
+      coefficients and debris-flow susceptibility on burned slopes. The effect
+      is strongest in the first wet season after the fire and decays as
+      vegetation recovers -- which is why the coupling is lagged and decaying
+      rather than instantaneous.
+    implementation: >
+      Burn severity (dNBR class) modifies the runoff-related terms of the flood
+      susceptibility feature stack for affected pixels, with an exponential
+      decay over 24 months keyed to the post-fire NDVI recovery trajectory.
+    strength: 0.4
+    evidence: "Well established in post-fire hydrology. Cite properly in Phase 19."
+    caveat: >
+      Most Indian fire detections are agricultural residue burning rather than
+      forest fire. This coupling must be restricted to forest land-cover classes
+      or it will fire spuriously across the Punjab/Haryana stubble-burning season.
+
+# ---------------------------------------------------------------------------
+# Explicitly rejected couplings. Recorded rather than omitted, so that the
+# reasoning survives and nobody re-adds them later.
+# ---------------------------------------------------------------------------
+rejected:
+  - id: flood_to_wildfire
+    reason: >
+      No plausible short-term mechanism. Flooding does not raise fire hazard on
+      any timescale the system operates over. Long-run fuel-load effects on
+      floodplain vegetation exist but are far below the noise floor here.
+
+  - id: earthquake_to_anything
+    reason: >
+      SAT-AI performs no earthquake prediction, so no earthquake hazard
+      probability exists to couple from. The earthquake module is post-event
+      damage assessment only.
+
+  - id: generic_cooccurrence
+    reason: >
+      Two hazards scoring highly in the same window is not evidence of coupling.
+      Admitting statistical co-occurrence as a coupling is exactly how naive
+      multi-hazard indices acquire spurious structure.

@@ -1,0 +1,119 @@
+# ===========================================================================
+# SAT-AI conda environment
+#
+#   conda env create -f environment.yml
+#   conda activate satai
+#   pip install -e ".[dev]"
+#
+# WHY CONDA AND NOT PIP (ADR-004):
+# rasterio / geopandas / pyproj bind to compiled GDAL, GEOS and PROJ libraries.
+# On Windows, pip wheels for these regularly mismatch their system libraries and
+# fail at import with cryptic DLL errors. conda-forge ships them as a single
+# consistent, pre-built stack. This is the difference between a 5-minute setup
+# and a two-day one.
+#
+# Phase 1 only strictly needs: python, pydantic, pydantic-settings, pyyaml,
+# pytest, ruff, mypy, psutil. The rest is pinned now so the environment is
+# created once rather than grown ad hoc (and so versions are reproducible).
+# ===========================================================================
+name: satai
+channels:
+  - conda-forge
+  - nodefaults           # never mix conda-forge with the defaults channel
+
+dependencies:
+  - python=3.11
+
+  # --- geospatial core (conda-forge ONLY) --------------------------------
+  - gdal=3.9
+  - libgdal-core
+  - rasterio=1.3
+  - rioxarray
+  - xarray
+  - netcdf4
+  - h5py
+  - geopandas=1.0
+  - shapely=2.0
+  - pyproj=3.6
+  - fiona
+  - pystac-client
+  - stackstac
+  - rio-cogeo                # Cloud-Optimized GeoTIFF writer
+  - richdem                  # hydrological terrain: flow accumulation, HAND
+  - scikit-image             # co-registration, morphology, Otsu threshold
+
+  # --- scientific stack ---------------------------------------------------
+  - numpy=1.26
+  - scipy
+  - pandas=2.2
+  - pyarrow
+  - scikit-learn=1.5
+  - xgboost=2.1
+  - imbalanced-learn
+  - shap
+  - matplotlib
+  - seaborn
+  - tqdm
+
+  # --- config / validation ------------------------------------------------
+  - pydantic=2.9
+  - pydantic-settings
+  - pyyaml
+  - python-dotenv
+
+  # --- API / database -----------------------------------------------------
+  - fastapi
+  - uvicorn
+  - sqlalchemy=2.0
+  - alembic
+  - psycopg
+  - httpx
+  - tenacity                 # retry with backoff for flaky EO APIs
+
+  # --- dev tooling --------------------------------------------------------
+  - pytest
+  - pytest-cov
+  - ruff
+  - mypy
+  - pre-commit
+  - ipykernel
+  - jupyterlab
+  - psutil
+
+  # --- pip-only packages --------------------------------------------------
+  # These have no reliable conda-forge build, or move too fast for it.
+  - pip
+  - pip:
+      # PyTorch: CPU build locally. On Colab/Kaggle the CUDA build is preinstalled.
+      # If you DO have an NVIDIA GPU, replace with the CUDA index URL from
+      # https://pytorch.org/get-started/locally/ -- see docs/setup-windows.md
+      - torch==2.4.1
+      - torchvision==0.19.1
+      - segmentation-models-pytorch==0.3.4
+      - albumentations==1.4.15
+      - onnx==1.16.2
+      - onnxruntime==1.19.2
+
+      # Earth observation access
+      - earthengine-api==1.1.2
+      - geemap==0.34.5
+      - sentinelhub==3.10.2
+      - openeo==0.32.0
+      - cdsapi==0.7.3
+
+      # Agent layer.
+      #
+      # LangGraph and the LangChain packages were pinned here and never
+      # imported. Routing is a weighted keyword scorer with a deterministic
+      # fallback (satai/agents/router.py) because requirement 39 says the
+      # system must route with no API key reachable at all, and a graph
+      # framework adds a large dependency tree, a second prompt abstraction and
+      # an upgrade treadmill for three agents and nine tools. Removed rather
+      # than left in place: an unused pin is a claim about the architecture
+      # that the code does not support. See the status note in ADR-001.
+      - anthropic==0.40.0
+
+      # API extras
+      - geoalchemy2==0.15.2
+      - sse-starlette==2.1.3
+      - slowapi==0.1.9

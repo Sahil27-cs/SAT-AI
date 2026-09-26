@@ -1,0 +1,58 @@
+{
+  "experiment": "risk_sensitivity_structural",
+  "mode": "structural",
+  "created_at": "2026-09-22T13:00:36.702885+00:00",
+  "git_sha": null,
+  "grid_size": 256,
+  "smoothing_sigma": 6.0,
+  "exponent_grid": [
+    0.5,
+    0.75,
+    1.0,
+    1.5,
+    2.0
+  ],
+  "data_note": "Synthetic spatially-autocorrelated fields with controlled rank correlation. This measures a property of the RISK FORMULATION, not of any study area. The AOI-specific result requires the Track B stack and is produced by --mode aoi.",
+  "points": [
+    {
+      "rho_target": 0.0,
+      "rho_achieved_he": -0.006306078780075363,
+      "rho_achieved_hv": -0.025555795378660748,
+      "min_rank_correlation": 0.9570799565025646,
+      "max_band_reassignment": 0.18695068359375,
+      "min_top_decile_jaccard": 0.7398460313246615
+    },
+    {
+      "rho_target": 0.3,
+      "rho_achieved_he": 0.3292474490856618,
+      "rho_achieved_hv": 0.3053352340065716,
+      "min_rank_correlation": 0.9783829474473766,
+      "max_band_reassignment": 0.13751220703125,
+      "min_top_decile_jaccard": 0.7941418012592389
+    },
+    {
+      "rho_target": 0.5,
+      "rho_achieved_he": 0.5254242276829693,
+      "rho_achieved_hv": 0.4990586692669094,
+      "min_rank_correlation": 0.9864486043268192,
+      "max_band_reassignment": 0.114715576171875,
+      "min_top_decile_jaccard": 0.8386870528825923
+    },
+    {
+      "rho_target": 0.7,
+      "rho_achieved_he": 0.7153767961390219,
+      "rho_achieved_hv": 0.6935059418516174,
+      "min_rank_correlation": 0.9926768083160825,
+      "max_band_reassignment": 0.0859375,
+      "min_top_decile_jaccard": 0.8645803698435277
+    },
+    {
+      "rho_target": 0.9,
+      "rho_achieved_he": 0.9041723879398227,
+      "rho_achieved_hv": 0.8951647512613244,
+      "min_rank_correlation": 0.9977669849889834,
+      "max_band_reassignment": 0.04815673828125,
+      "min_top_decile_jaccard": 0.9152542372881356
+    }
+  ]
+}

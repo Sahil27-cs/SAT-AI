@@ -1,0 +1,158 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "satai"
+version = "0.1.0"
+description = "SAT-AI: multi-hazard prediction and early-warning research prototype using satellite remote sensing"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Chirag Pednekar" }]
+keywords = ["remote-sensing", "disaster-risk", "flood-mapping", "geoai", "sentinel-1"]
+
+# NOTE ON DEPENDENCIES
+# The heavy geospatial stack (GDAL, rasterio, geopandas, pyproj) is installed via
+# conda-forge in environment.yml, NOT pip. Installing those from pip on Windows is a
+# well-known source of broken GDAL bindings. Only pure-Python runtime deps live here.
+# See docs/setup-windows.md and docs/adr/ADR-004-conda-for-geospatial-stack.md
+dependencies = [
+    "numpy>=1.26,<3",
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.5,<3",
+    "PyYAML>=6.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "types-PyYAML",
+    "pre-commit>=3.8",
+    "psutil>=6.0",
+    # The serving plane's own dependencies. Needed here so `tests/test_api_routes.py`
+    # can drive the real app through fastapi's TestClient rather than testing a
+    # mock of it -- the endpoints were untested until they were importable.
+    "fastapi>=0.115",
+    "httpx>=0.28",
+]
+
+[project.scripts]
+satai-check-env = "satai.cli:check_env_entrypoint"
+
+[tool.setuptools.packages.find]
+include = ["satai*"]
+
+[tool.setuptools.package-data]
+satai = ["py.typed"]
+
+# ---------------------------------------------------------------------------
+# Ruff: linter + formatter. One tool instead of flake8 + isort + black.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["satai", "backend", "ml", "scripts", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort (import ordering)
+    "B",    # flake8-bugbear (likely bugs)
+    "UP",   # pyupgrade (modern syntax)
+    "ANN",  # flake8-annotations (type hints required - see ADR-003)
+    "S",    # flake8-bandit (security; catches hardcoded secrets)
+    "C4",   # comprehensions
+    "SIM",  # simplify
+    "PTH",  # prefer pathlib over os.path
+    "BLE",  # flake8-blind-except (catching bare Exception hides real failures)
+    "RUF",
+]
+ignore = [
+    "ANN401",  # allow typing.Any where genuinely needed
+    "B008",    # FastAPI's Depends() in defaults is idiomatic
+    # Docstrings in this project carry real mathematical notation -- minus signs,
+    # subscripts, ≫, γ⁰. Substituting ASCII look-alikes would make formulas like
+    # "VV_dB − VH_dB" harder to read, and these docstrings are where the unit
+    # conventions that prevent silent sign errors are recorded.
+    "RUF002",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "ANN"]        # asserts are the point of tests
+"notebooks/*" = ["ALL"]
+"scripts/check_env.py" = ["S603", "S607"]  # deliberate subprocess use, fixed args
+
+[tool.ruff.lint.isort]
+known-first-party = ["satai"]
+
+# ---------------------------------------------------------------------------
+# Mypy: static type checking. Strict on our own code, lenient on untyped libs.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+# `packages = ["satai"]` checked the library and left the *deployed* code
+# unchecked, so "mypy --strict clean" was true of roughly half the Python and
+# not of the half serving traffic. `backend/` is now in scope.
+#
+# `ml/` and `scripts/` are still out: they are research scripts whose call
+# sites are numpy-heavy and whose third-party stubs are incomplete, and adding
+# them without fixing them would mean a wall of ignores that makes the checker
+# decorative. They are the next thing to bring in, one module at a time.
+files = ["satai", "backend"]
+strict = true
+warn_unreachable = true
+show_error_codes = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = [
+    "rasterio.*",
+    "geopandas.*",
+    "ee.*",
+    "shapely.*",
+    "pyproj.*",
+    "psutil.*",
+    # scikit-learn ships no py.typed marker; scipy-stubs covers scipy where
+    # installed, and this keeps a missing optional dependency from failing the
+    # type check for everyone.
+    "sklearn.*",
+    "scipy.*",
+]
+ignore_missing_imports = true
+
+# Vercel puts `api/` on sys.path directly, so the serving plane's two modules
+# import each other by bare name (`from index import ...`). That is correct at
+# runtime and unresolvable to a type checker walking the repository tree, where
+# the same file is `backend.api.index`. Adding backend/api to mypy_path instead
+# would make mypy see one file under two module names and refuse both.
+[[tool.mypy.overrides]]
+module = ["index", "satai_agents"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "slow: tests that take more than a few seconds",
+    "network: tests that require network access (skipped in CI by default)",
+    "gpu: tests that require a CUDA device",
+]
+filterwarnings = ["error::DeprecationWarning:satai.*"]
+
+[tool.coverage.run]
+source = ["satai"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]

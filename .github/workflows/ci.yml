@@ -1,0 +1,116 @@
+# CI for SAT-AI.
+#
+# Three jobs, deliberately separated so a failure names its own cause:
+#
+#   python    lint, type-check and test the shared package and the serving plane
+#   frontend  type-check and build the Next.js dashboard
+#   secrets   gitleaks over the full history
+#
+# The Python job installs from pip only. The heavy geospatial stack (GDAL,
+# rasterio, geopandas) lives in environment.yml and is NOT installed here:
+# conda-forge on a GitHub runner costs several minutes per job, and nothing in
+# `tests/` needs it -- the preprocessing and provider tests are pure bookkeeping
+# over chip identifiers and recorded catalogue responses (see tests/conftest.py).
+# If a test ever does need rasterio it should be marked `slow` and run in a
+# separate scheduled workflow rather than slowing this one down for everyone.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The range pyproject.toml declares as supported. Testing only the
+        # lower bound would let a 3.12-only failure reach a user who followed
+        # the documented setup.
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          # The serving plane is deployed from backend/requirements.txt, so CI
+          # installs exactly that rather than a superset -- otherwise a missing
+          # runtime dependency passes here and fails on Vercel.
+          pip install -r backend/requirements.txt
+
+      - name: Ruff (lint)
+        run: ruff check .
+
+      - name: Ruff (format)
+        run: ruff format --check .
+
+      - name: Mypy
+        run: mypy
+
+      - name: Pytest
+        run: pytest -q --cov --cov-report=term-missing
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+        env:
+          # The build must not depend on deployment secrets. These are the
+          # documented public defaults; a build that needs more than this is a
+          # build that cannot be reproduced from a clone.
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks needs history, not just the tip commit, or a credential
+          # committed and then removed goes undetected.
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

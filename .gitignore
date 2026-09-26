@@ -1,0 +1,134 @@
+# ---------------------------------------------------------------------------
+# SAT-AI .gitignore
+#
+# RULE: satellite data NEVER enters git history. One accidental 1 GB GRD commit
+# poisons the repository permanently -- `git rm` does not reclaim the space,
+# every future clone pays for it, and GitHub rejects pushes over 100 MB per file.
+# The pre-commit large-file hook is the second line of defence.
+# What IS committed: data/manifests/ (what we downloaded) and data/samples/
+# (small demo assets), so the repo is reproducible without the data.
+# ---------------------------------------------------------------------------
+
+# --- Data ---
+data/raw/**
+data/processed/**
+data/interim/**
+!data/**/.gitkeep
+!data/manifests/**
+!data/samples/**
+
+# Raster / vector / archive formats, wherever they appear
+*.tif
+*.tiff
+*.img
+*.jp2
+*.nc
+*.hdf
+*.h5
+*.grib
+*.grib2
+*.safe/
+*.SAFE/
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.shp
+*.shx
+*.dbf
+*.gpkg
+*.parquet
+*.feather
+# ...but allow small committed demo assets
+!data/samples/**/*.tif
+!data/samples/**/*.gpkg
+!data/samples/**/*.parquet
+
+# --- Models / experiment outputs ---
+models/**
+!models/.gitkeep
+*.pt
+*.pth
+*.onnx
+*.pkl
+*.joblib
+*.h5
+ml/experiments/**/checkpoints/
+mlruns/
+wandb/
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+service-account*.json
+.earthengine/
+.netrc
+.cdsapirc
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+.installed.cfg
+venv/
+.venv/
+env/
+ENV/
+.python-version
+
+# --- Testing / typing / linting caches ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# --- Notebooks ---
+.ipynb_checkpoints/
+notebooks/**/*.ipynb_convert*
+
+# --- Node / Next.js (frontend) ---
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# --- Editors / OS ---
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Docker / local infra ---
+.docker-data/
+postgres-data/
+
+# --- Logs ---
+logs/
+*.log

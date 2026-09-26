@@ -1,0 +1,139 @@
+# ===========================================================================
+# SAT-AI multi-hazard risk engine configuration
+#
+# FORMULATION (justified in docs/adr/ADR-008, implemented in Phase 8):
+#
+#     R_h  =  H_h^alpha  *  E^beta  *  V^gamma
+#
+# Multiplicative, not additive, and deliberately so. An uninhabited floodplain
+# has high hazard and effectively zero risk. An additive or averaged form gets
+# that wrong: it would assign substantial "risk" to an empty river meander and
+# is the single most common defect in multi-hazard dashboards. The multiplicative
+# form enforces the correct boundary condition -- zero exposure implies zero risk
+# -- which follows the Crichton risk-triangle / UNDRR hazard-exposure-
+# vulnerability decomposition.
+#
+# The exponents are NOT tuned to make maps look good. They default to 1.0 and
+# every published risk map must be accompanied by the one-at-a-time sensitivity
+# analysis defined at the bottom of this file. That converts an arbitrary
+# modelling choice into a reported, inspectable result.
+#
+# NOTHING IN THIS FILE IS AN OFFICIAL WARNING THRESHOLD. These are SAT-AI
+# prototype research levels. Official warnings for India come from IMD, NDMA and
+# State Disaster Management Authorities.
+# ===========================================================================
+version: "0.1.0"
+
+formulation:
+  method: multiplicative          # multiplicative | weighted_additive (ablation)
+  exponents:
+    alpha: 1.0                    # hazard probability
+    beta: 1.0                     # exposure
+    gamma: 1.0                    # vulnerability (proxy -- see caveat below)
+  # Guard against a single zero component annihilating the product where that
+  # is not physically meaningful (e.g. a vulnerability proxy that is simply
+  # missing, as opposed to genuinely zero).
+  floor: 0.01
+  missing_component_policy: flag_and_exclude   # never silently substitute a value
+
+normalisation:
+  # Min-max over the AOI, clipped at robust percentiles so a single outlier
+  # pixel cannot compress the entire scale.
+  method: percentile_minmax
+  lower_percentile: 2.0
+  upper_percentile: 98.0
+  scope: per_aoi                  # per_aoi | global -- per_aoi keeps maps legible;
+                                  # cross-AOI comparison must use global (the API
+                                  # records which was used in the envelope)
+
+hazard:
+  # Each entry maps a hazard to the model output that supplies H, and states
+  # plainly what that output is and is not.
+  flood:
+    source: flood_susceptibility_xgb        # static component
+    modulator: rainfall_antecedent_index    # near-real-time trigger component
+    combine: "H = susceptibility * (0.4 + 0.6 * rainfall_index)"
+    claim: "model-estimated flood risk"
+    not_a_claim: "a forecast of flood occurrence, timing, or depth"
+  wildfire:
+    source: fire_danger_xgb
+    claim: "model-estimated fire danger over the next n days"
+    not_a_claim: "a prediction of where a fire will ignite"
+  cyclone:
+    source: cyclone_exposure_index
+    claim: "documented composite index of extreme wind and rainfall risk"
+    not_a_claim: "a cyclone track or intensity forecast"
+  earthquake:
+    source: null
+    claim: "post-event damage assessment only"
+    not_a_claim: "any form of earthquake prediction whatsoever"
+
+exposure:
+  # E: what is there to be harmed. Real, open, quantitative data.
+  components:
+    population_density:
+      weight: 0.45
+      dataset: "WorldPop 100m constrained"
+    built_up_fraction:
+      weight: 0.35
+      dataset: "GHSL GHS-BUILT-S"
+    critical_facilities:
+      weight: 0.20
+      dataset: "OpenStreetMap (hospital, school, fire_station, police, power)"
+  aggregation: weighted_sum
+
+vulnerability:
+  # V: PROXY ONLY. Fine-resolution socioeconomic vulnerability data for India is
+  # not openly available, so V here is built from physical and accessibility
+  # proxies. Overstating this would be the dishonest move; the caveat below is
+  # attached to every envelope the risk engine emits and is rendered in the UI.
+  is_proxy: true
+  caveat: >
+    Vulnerability is a proxy index derived from building density, road
+    accessibility and elevation relative to drainage. It does not incorporate
+    income, age structure, disability, tenure or any other socioeconomic
+    determinant of vulnerability, and therefore systematically under-represents
+    the vulnerability of marginalised populations.
+  components:
+    building_density:       {weight: 0.35, dataset: "OSM building footprints"}
+    road_accessibility:     {weight: 0.30, dataset: "OSM road network, distance-to-road"}
+    elevation_above_drainage: {weight: 0.35, dataset: "Copernicus DEM GLO-30 -> HAND"}
+  aggregation: weighted_sum
+
+levels:
+  # Percentile cut-points over the AOI risk distribution, NOT absolute physical
+  # thresholds. Documented as such everywhere they are displayed.
+  method: percentile
+  bands:
+    - {name: GREEN,  max_percentile: 50, label: "Low",       colour: "#2E7D32"}
+    - {name: YELLOW, max_percentile: 75, label: "Moderate",  colour: "#F9A825"}
+    - {name: ORANGE, max_percentile: 90, label: "High",      colour: "#EF6C00"}
+    - {name: RED,    max_percentile: 100, label: "Very high", colour: "#C62828"}
+  disclaimer: >
+    SAT-AI prototype risk level. Research output from a student research
+    prototype. This is NOT an official warning and does not replace IMD, NDMA or
+    State Disaster Management Authority advisories.
+
+multi_hazard:
+  # Explicitly NOT (flood + wildfire + cyclone) / 3. Hazard scores are not
+  # commensurable -- a 0.7 flood score and a 0.7 fire score do not denote the
+  # same thing, and averaging them produces a number that means nothing.
+  primary_output: risk_vector     # per-hazard scores kept separate
+  secondary_outputs:
+    - dominant_hazard             # argmax plus the margin to the runner-up
+    - compound_risk               # ONLY where configs/couplings.yaml justifies it
+  forbid_naive_average: true
+
+sensitivity_analysis:
+  # Mandatory before any risk map is published or reported.
+  enabled: true
+  method: one_at_a_time
+  parameters:
+    alpha: [0.5, 0.75, 1.0, 1.5, 2.0]
+    beta:  [0.5, 0.75, 1.0, 1.5, 2.0]
+    gamma: [0.5, 0.75, 1.0, 1.5, 2.0]
+  report_metrics:
+    - spearman_rank_correlation_vs_default
+    - band_reassignment_fraction     # share of cells changing GREEN/YELLOW/ORANGE/RED
+    - top_decile_stability
+  output: ml/experiments/risk_sensitivity/

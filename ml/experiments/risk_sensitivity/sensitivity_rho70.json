@@ -1,0 +1,288 @@
+{
+  "hazard": "flood",
+  "created_at": "2026-09-22T13:00:36.168627+00:00",
+  "n_cells": 65536,
+  "default_config_hash": "77a8740db2ef",
+  "git_sha": null,
+  "summary": {
+    "min_rank_correlation": 0.9926768083160825,
+    "max_band_reassignment": 0.0859375,
+    "min_top_decile_jaccard": 0.8645803698435277
+  },
+  "points": [
+    {
+      "parameter": "alpha",
+      "value": 0.5,
+      "alpha": 0.5,
+      "beta": 1.0,
+      "gamma": 1.0,
+      "spearman_rho": 0.9950890490492529,
+      "band_reassignment_fraction": 0.06842041015625,
+      "top_decile_jaccard": 0.8964120370370371,
+      "mean_risk": 0.2579533502635271,
+      "mean_risk_delta": 0.03778576790988625,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "alpha",
+      "value": 0.75,
+      "alpha": 0.75,
+      "beta": 1.0,
+      "gamma": 1.0,
+      "spearman_rho": 0.9989960134360236,
+      "band_reassignment_fraction": 0.0311279296875,
+      "top_decile_jaccard": 0.9532111458798986,
+      "mean_risk": 0.2373344694880249,
+      "mean_risk_delta": 0.017166887134384023,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "alpha",
+      "value": 1.0,
+      "alpha": 1.0,
+      "beta": 1.0,
+      "gamma": 1.0,
+      "spearman_rho": 1.0,
+      "band_reassignment_fraction": 0.0,
+      "top_decile_jaccard": 1.0,
+      "mean_risk": 0.22016758235364087,
+      "mean_risk_delta": 0.0,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "alpha",
+      "value": 1.5,
+      "alpha": 1.5,
+      "beta": 1.0,
+      "gamma": 1.0,
+      "spearman_rho": 0.997582181377838,
+      "band_reassignment_fraction": 0.048553466796875,
+      "top_decile_jaccard": 0.937620103473762,
+      "mean_risk": 0.19317778728602314,
+      "mean_risk_delta": -0.026989795067617728,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "alpha",
+      "value": 2.0,
+      "alpha": 2.0,
+      "beta": 1.0,
+      "gamma": 1.0,
+      "spearman_rho": 0.9926768083160825,
+      "band_reassignment_fraction": 0.0859375,
+      "top_decile_jaccard": 0.8893052752954742,
+      "mean_risk": 0.17289251472465758,
+      "mean_risk_delta": -0.047275067628983286,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "beta",
+      "value": 0.5,
+      "alpha": 1.0,
+      "beta": 0.5,
+      "gamma": 1.0,
+      "spearman_rho": 0.9955786128957422,
+      "band_reassignment_fraction": 0.0655517578125,
+      "top_decile_jaccard": 0.8988845429523395,
+      "mean_risk": 0.25721523722439693,
+      "mean_risk_delta": 0.037047654870756064,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "beta",
+      "value": 0.75,
+      "alpha": 1.0,
+      "beta": 0.75,
+      "gamma": 1.0,
+      "spearman_rho": 0.9990970129786338,
+      "band_reassignment_fraction": 0.0291748046875,
+      "top_decile_jaccard": 0.9552505966587113,
+      "mean_risk": 0.23705433732594072,
+      "mean_risk_delta": 0.016886754972299856,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "beta",
+      "value": 1.0,
+      "alpha": 1.0,
+      "beta": 1.0,
+      "gamma": 1.0,
+      "spearman_rho": 1.0,
+      "band_reassignment_fraction": 0.0,
+      "top_decile_jaccard": 1.0,
+      "mean_risk": 0.22016758235364087,
+      "mean_risk_delta": 0.0,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "beta",
+      "value": 1.5,
+      "alpha": 1.0,
+      "beta": 1.5,
+      "gamma": 1.0,
+      "spearman_rho": 0.9978349620025991,
+      "band_reassignment_fraction": 0.047576904296875,
+      "top_decile_jaccard": 0.9205860805860806,
+      "mean_risk": 0.19341782285989703,
+      "mean_risk_delta": -0.026749759493743835,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "beta",
+      "value": 2.0,
+      "alpha": 1.0,
+      "beta": 2.0,
+      "gamma": 1.0,
+      "spearman_rho": 0.9934494966708421,
+      "band_reassignment_fraction": 0.081268310546875,
+      "top_decile_jaccard": 0.8645803698435277,
+      "mean_risk": 0.17313742198533943,
+      "mean_risk_delta": -0.04703016036830143,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "gamma",
+      "value": 0.5,
+      "alpha": 1.0,
+      "beta": 1.0,
+      "gamma": 0.5,
+      "spearman_rho": 0.9950203667252545,
+      "band_reassignment_fraction": 0.07012939453125,
+      "top_decile_jaccard": 0.8906678205682965,
+      "mean_risk": 0.25750321732294945,
+      "mean_risk_delta": 0.037335634969308584,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "gamma",
+      "value": 0.75,
+      "alpha": 1.0,
+      "beta": 1.0,
+      "gamma": 0.75,
+      "spearman_rho": 0.9989982090707115,
+      "band_reassignment_fraction": 0.0325927734375,
+      "top_decile_jaccard": 0.9494348602022605,
+      "mean_risk": 0.23711386609414245,
+      "mean_risk_delta": 0.016946283740501583,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "gamma",
+      "value": 1.0,
+      "alpha": 1.0,
+      "beta": 1.0,
+      "gamma": 1.0,
+      "spearman_rho": 1.0,
+      "band_reassignment_fraction": 0.0,
+      "top_decile_jaccard": 1.0,
+      "mean_risk": 0.22016758235364087,
+      "mean_risk_delta": 0.0,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "gamma",
+      "value": 1.5,
+      "alpha": 1.0,
+      "beta": 1.0,
+      "gamma": 1.5,
+      "spearman_rho": 0.9976511843215985,
+      "band_reassignment_fraction": 0.045013427734375,
+      "top_decile_jaccard": 0.9310548025928108,
+      "mean_risk": 0.1935366041015704,
+      "mean_risk_delta": -0.026630978252070475,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    },
+    {
+      "parameter": "gamma",
+      "value": 2.0,
+      "alpha": 1.0,
+      "beta": 1.0,
+      "gamma": 2.0,
+      "spearman_rho": 0.9929596020099241,
+      "band_reassignment_fraction": 0.078643798828125,
+      "top_decile_jaccard": 0.8795526240321193,
+      "mean_risk": 0.1734887724761337,
+      "mean_risk_delta": -0.046678809877507166,
+      "band_fractions": {
+        "GREEN": 0.5,
+        "ORANGE": 0.149993896484375,
+        "RED": 0.100006103515625,
+        "YELLOW": 0.25
+      }
+    }
+  ],
+  "notes": [
+    "One-at-a-time analysis: each exponent is varied with the others held at their defaults. It does not explore interactions between them.",
+    "Risk bands are percentiles of the risk distribution within this area, so band fractions are near-constant by construction; the reassignment fraction measures which CELLS move, not how many are in each band."
+  ]
+}

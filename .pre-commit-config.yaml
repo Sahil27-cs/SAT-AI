@@ -1,0 +1,64 @@
+# Pre-commit hooks for SAT-AI.
+#
+#   pre-commit install          install the git hook
+#   pre-commit run --all-files  run everything now
+#
+# The ordering matters: the cheap file-level hooks run first so a 400 MB raster
+# staged by accident is rejected before ruff spends time parsing the repo.
+#
+# `gitleaks` is the one hook that must never be skipped. Every credential this
+# project uses is an environment variable by design (satai/config.py), and this
+# is the mechanism that keeps that design from being undone by one hurried
+# commit. CI runs it again over the full history, because a hook can be bypassed
+# with --no-verify and a pipeline cannot.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        # Rasters and model weights belong in object storage (ADR-006), not in
+        # git. 5 MB is comfortably above any config or notebook and well below
+        # a single Sentinel-1 chip stack.
+        args: [--maxkb=5120]
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+        exclude: ^frontend/tsconfig\.json$ # tsconfig allows comments; json does not
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: [--branch, main]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.1
+    hooks:
+      - id: mypy
+        # mypy needs the project's own config and its type stubs; passing files
+        # individually would make it re-infer the package layout per file and
+        # report imports it cannot see.
+        pass_filenames: false
+        args: [--config-file=pyproject.toml]
+        additional_dependencies:
+          - pydantic>=2.9
+          - pydantic-settings>=2.5
+          - types-PyYAML
+          - numpy>=1.26
+          - fastapi>=0.115
+          - httpx>=0.28
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.23.1
+    hooks:
+      - id: gitleaks
