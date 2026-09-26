@@ -41,11 +41,20 @@ def test_verified_model_identifiers() -> None:
 
 
 def test_api_key_is_a_secret_and_does_not_leak_in_repr() -> None:
-    llm = LLMSettings(ANTHROPIC_API_KEY="sk-ant-super-secret-value")  # type: ignore[call-arg]
-    assert "super-secret-value" not in repr(llm)
-    assert "super-secret-value" not in str(llm)
+    """The fixture deliberately does not look like a real key.
+
+    It used to carry a realistic Anthropic key prefix, which the `gitleaks` scan
+    in CI flagged as a committed credential — correctly, since a scanner cannot
+    tell a realistic fixture from the real thing. What this test asserts is that
+    SecretStr hides whatever it wraps, and that holds for any value, so the
+    realism bought nothing and cost a red pipeline.
+    """
+    sentinel = "unit-test-value-that-must-not-appear-in-repr"
+    llm = LLMSettings(ANTHROPIC_API_KEY=sentinel)  # type: ignore[call-arg]
+    assert sentinel not in repr(llm)
+    assert sentinel not in str(llm)
     assert isinstance(llm.api_key, SecretStr)
-    assert llm.api_key.get_secret_value() == "sk-ant-super-secret-value"
+    assert llm.api_key.get_secret_value() == sentinel
 
 
 def test_llm_is_not_configured_without_a_key() -> None:
@@ -104,19 +113,20 @@ def test_documented_variables_are_actually_read() -> None:
 def test_the_service_key_is_a_secret_and_gates_the_audit_log() -> None:
     """Read access and the ability to record a chat turn are separate things."""
     read_only = SupabaseSettings(  # type: ignore[call-arg]
-        SUPABASE_URL="https://example.supabase.co", SUPABASE_ANON_KEY="sb_publishable_x"
+        SUPABASE_URL="https://example.supabase.co", SUPABASE_ANON_KEY="publishable-test-value"
     )
     assert read_only.is_configured is True
     assert read_only.audit_log_enabled is False, "C1 logging must not run on the anon key"
 
+    service_value = "service-value-that-must-not-appear-in-repr"
     writable = SupabaseSettings(  # type: ignore[call-arg]
         SUPABASE_URL="https://example.supabase.co",
-        SUPABASE_ANON_KEY="sb_publishable_x",
-        SUPABASE_SERVICE_KEY="sb_secret_do_not_log",
+        SUPABASE_ANON_KEY="publishable-test-value",
+        SUPABASE_SERVICE_KEY=service_value,
     )
     assert writable.audit_log_enabled is True
-    assert "do_not_log" not in repr(writable)
-    assert "do_not_log" not in str(writable)
+    assert service_value not in repr(writable)
+    assert service_value not in str(writable)
 
 
 def test_derived_paths_sit_under_the_data_dir() -> None:

@@ -1,0 +1,45 @@
+# gitleaks configuration.
+#
+# The default ruleset is kept in full and extended, never replaced. Everything
+# below is an allowlist, and each entry names the one string it permits and why
+# that string is safe to publish. A broad allowlist would make the scan
+# decorative, which is worse than not running it: a green check that proves
+# nothing is how a real credential eventually gets committed.
+#
+# Nothing here permits a *class* of secret. There is no path exclusion for
+# `tests/`, no rule disabled wholesale, and no entropy threshold raised.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Supabase publishable key — designed for untrusted clients"
+
+# This is the one credential literal in the repository, and it is publishable by
+# design rather than by accident:
+#
+#   * a Supabase publishable ("anon") key is built to be handed to untrusted
+#     clients, and this one already ships inside the browser bundle the frontend
+#     serves, so it is public whether or not it is in git;
+#   * every table it can reach has row-level security enabled with an explicit
+#     SELECT-only policy, and the write credential has no fallback anywhere
+#     (backend/app/db/migrations/003_anon_read_grants_and_rls.sql);
+#   * it exists only so a deployment with no environment variables configured
+#     degrades to read-only catalogue access rather than to a blank page. An
+#     environment variable always wins over it.
+#
+# The service-role key is never in this repository, has no fallback, and is not
+# allowlisted here — if one is ever committed, this config lets gitleaks fail
+# the build, which is the entire point of keeping the allowlist this narrow.
+#
+# See the Security section of README.md and docs/deployment.md.
+# Deliberately a single exact literal, with no companion `paths` entry. In
+# gitleaks an allowlist's `regexes` and `paths` are OR'd unless a `condition` is
+# set, so listing the two files here would exempt those files wholesale — every
+# future secret added to backend/api/index.py would pass silently. Matching the
+# one string instead keeps the exemption to exactly what is being exempted.
+regexes = [
+  '''sb_publishable_ZqxJZMUFFB1LQmcpV92b5w_66qDwpiZ''',
+]
+
+regexTarget = "match"

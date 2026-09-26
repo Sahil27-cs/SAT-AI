@@ -343,7 +343,7 @@ def test_a_chat_turn_is_recorded_against_the_prefixed_view(
     """Posting straight at `satai.chat_turns` 404s: PostgREST routes only to
     exposed schemas, and `satai` is deliberately not one. Migration 002 creates
     the insert-only view in `public` that this must target instead."""
-    monkeypatch.setattr(api, "SUPABASE_SERVICE_KEY", "sb_secret_test")
+    monkeypatch.setattr(api, "SUPABASE_SERVICE_KEY", "service-key-test-value")
     captured: dict[str, Any] = {}
 
     class Capture:
@@ -381,7 +381,7 @@ def test_an_audit_write_failure_never_fails_the_users_request(
     client: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The answer does not depend on the bookkeeping succeeding."""
-    monkeypatch.setattr(api, "SUPABASE_SERVICE_KEY", "sb_secret_test")
+    monkeypatch.setattr(api, "SUPABASE_SERVICE_KEY", "service-key-test-value")
 
     class Broken:
         async def __aenter__(self) -> Broken:

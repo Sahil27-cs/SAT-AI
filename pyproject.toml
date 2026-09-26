@@ -39,6 +39,15 @@ dev = [
     # mock of it -- the endpoints were untested until they were importable.
     "fastapi>=0.115",
     "httpx>=0.28",
+    # Imported by satai.ml.distribution_gate, satai.risk.sensitivity and
+    # satai.ml.baseline. environment.yml installs them from conda-forge for local
+    # work, but CI installs from pip only -- so without them here, collecting
+    # tests/test_distribution_gate.py and tests/test_risk_sensitivity.py fails
+    # outright and pytest exits 2. Unlike GDAL and rasterio, these two carry no
+    # compiled geospatial stack and install cleanly from pip (ADR-004 is about
+    # the GDAL chain, not the whole scientific stack).
+    "scipy>=1.11",
+    "scikit-learn>=1.5",
 ]
 
 [project.scripts]
@@ -96,7 +105,16 @@ known-first-party = ["satai"]
 # Mypy: static type checking. Strict on our own code, lenient on untyped libs.
 # ---------------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.11"
+# 3.12, although the package supports 3.11 (see requires-python).
+#
+# numpy's current stubs use PEP 695 `type` statements, which mypy refuses to
+# parse when analysing at 3.11 -- it fails in numpy/__init__.pyi before reaching
+# any project code, so the whole check aborts. Analysing at 3.12 is the
+# trade-off, and it is a narrow one: the CI matrix still runs the full suite on
+# a real 3.11 interpreter, so 3.11 runtime compatibility is genuinely verified.
+# What is given up is mypy rejecting 3.12-only *syntax* -- which the 3.11 test
+# job would fail on immediately anyway.
+python_version = "3.12"
 # `packages = ["satai"]` checked the library and left the *deployed* code
 # unchecked, so "mypy --strict clean" was true of roughly half the Python and
 # not of the half serving traffic. `backend/` is now in scope.
