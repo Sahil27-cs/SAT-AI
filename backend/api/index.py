@@ -491,8 +491,45 @@ async def health() -> dict[str, Any]:
     }
 
 
+@app.get("/api/v1/study-areas", tags=["regions"])
+async def list_study_areas() -> dict[str, Any]:
+    """Every **configured** study area, whether or not it has results yet.
+
+    This is deliberately a different list from `/api/v1/regions`, and the two
+    counts differing is information rather than a bug:
+
+    * `/api/v1/regions` returns the regions that have rows in the database --
+      what the system can currently answer questions about.
+    * this returns what `configs/aoi.yaml` declares, including areas selected
+      for transfer evaluation that have no ingested imagery. `/health` counts
+      these, so without this endpoint the health check reported a number no
+      caller could reconcile against anything.
+
+    `status` and `hasLabels` per area are what keep the difference legible: an
+    area listed here with no results is a stated intention, not a claim of
+    coverage.
+    """
+    areas = study_areas()
+    return {
+        "source": "configs/aoi.yaml",
+        "count": len(areas),
+        "caveat": (
+            "Configured study areas. An area appearing here does not mean "
+            "imagery has been ingested or that any hazard has been computed "
+            "for it -- see `status` per area, and /api/v1/regions for the "
+            "regions that actually carry results."
+        ),
+        "studyAreas": areas,
+    }
+
+
 @app.get("/api/v1/regions", response_model=list[Region], tags=["regions"])
 async def list_regions() -> list[Region]:
+    """The regions with rows in the database.
+
+    Fewer than `/api/v1/study-areas` returns, and that gap is the honest state
+    of the system rather than something to paper over.
+    """
     rows = await _query("regions", {"select": "*", "order": "id"})
     return [_model_or_502(Region, r, "regions") for r in rows]
 

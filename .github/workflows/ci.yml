@@ -2,7 +2,8 @@
 #
 # Three jobs, deliberately separated so a failure names its own cause:
 #
-#   python    lint, type-check and test the shared package and the serving plane
+#   python    lint, type-check and test the shared package, the serving plane
+#             and the ML pipeline
 #   frontend  type-check and build the Next.js dashboard
 #   secrets   gitleaks over the full history
 #
@@ -57,6 +58,18 @@ jobs:
           # installs exactly that rather than a superset -- otherwise a missing
           # runtime dependency passes here and fails on Vercel.
           pip install -r backend/requirements.txt
+          # PyTorch, CPU build, from its own index -- the default index pulls
+          # the CUDA wheels, which are gigabytes the runner has no use for.
+          #
+          # Not in the dev extras deliberately (ADR-004): someone working on the
+          # serving plane should not have to download it. CI does need it,
+          # twice over. `mypy --strict` now covers `ml/`, and without torch
+          # `nn.Module` is Any, which --strict refuses to let a class subclass --
+          # so the type check would fail on code that is correct. And the U-Net,
+          # inference, ONNX-export and risk-coupling tests import it: without
+          # it they skip, and a suite that silently skips its newest tests is
+          # worse than one that fails.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Ruff (lint)
         run: ruff check .

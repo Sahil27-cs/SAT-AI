@@ -445,3 +445,38 @@ def test_the_root_document_states_what_the_system_will_not_do(client: Any) -> No
     body = client.get("/").json()
     assert "predict earthquakes" in body["scope"]["does_not"]
     assert "NOT an official warning" in body["disclaimer"]
+
+
+# --- the study-area catalogue ------------------------------------------------
+
+
+def test_study_areas_lists_every_configured_area(client: Any) -> None:
+    """Seven are configured; four have database rows.
+
+    `/health` counts the configured ones, so before this endpoint existed the
+    health check reported a number that no caller could reconcile against
+    anything the API served.
+    """
+    body = client.get("/api/v1/study-areas").json()
+
+    assert body["count"] == len(body["studyAreas"])
+    assert body["count"] >= len(client.get("/api/v1/regions").json())
+    assert body["source"] == "configs/aoi.yaml"
+
+
+def test_study_areas_says_that_being_listed_is_not_coverage(client: Any) -> None:
+    """An area selected for transfer evaluation with no ingested imagery is a
+    stated intention. The payload has to say so where a reader will see it."""
+    body = client.get("/api/v1/study-areas").json()
+
+    assert "does not mean" in body["caveat"]
+    for area in body["studyAreas"]:
+        assert "status" in area, area["id"]
+        assert "hasLabels" in area, area["id"]
+
+
+def test_the_health_count_matches_the_catalogue_endpoint(client: Any) -> None:
+    """The two must not be able to drift apart."""
+    health = client.get("/health").json()
+    catalogue = client.get("/api/v1/study-areas").json()
+    assert int(health["checks"]["study_areas"]) == catalogue["count"]

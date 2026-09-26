@@ -27,7 +27,10 @@ from typing import Any
 
 import numpy as np
 import pytest
-import torch
+
+torch = pytest.importorskip(
+    "torch", reason="ADR-004: torch is installed separately from the dev extras"
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
