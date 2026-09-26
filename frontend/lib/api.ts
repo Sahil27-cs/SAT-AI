@@ -151,6 +151,13 @@ export async function getHazard(
   }
 }
 
+/** What the assistant asked the map to do, by calling show_on_map. */
+export interface MapAction {
+  region: string;
+  bbox: number[];
+  activate_layers: string[];
+}
+
 export interface ChatReply {
   answer: string;
   agent: string;
@@ -160,6 +167,13 @@ export interface ChatReply {
   grounded: boolean;
   degraded: boolean;
   provenance: { source_kind: string; source_id: string; caveats: string[] }[];
+  /**
+   * Map intents from this turn. The assistant expresses "show me the flooded
+   * area" as a tool call rather than as prose, and the dashboard executes it —
+   * which is what makes the agent part of the geospatial system rather than a
+   * chat window beside it.
+   */
+  map_actions: MapAction[];
   notes: string[];
 }
 

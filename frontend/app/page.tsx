@@ -302,7 +302,15 @@ function RiskMap({ regions }: { regions: Region[] }) {
 
 // --- assistant ---
 
-function Assistant({ regions, region }: { regions: Region[]; region: string }) {
+function Assistant({
+  regions, region, onMapAction,
+}: {
+  regions: Region[];
+  region: string;
+  /** Fired when the agent calls show_on_map. This is what puts the assistant
+      inside the geospatial system rather than beside it. */
+  onMapAction?: (regionId: string, layers: string[]) => void;
+}) {
   const [log, setLog] = useState<{ role: 'user' | 'agent'; text: string; meta?: ChatReply }[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -314,10 +322,14 @@ function Assistant({ regions, region }: { regions: Region[]; region: string }) {
     try {
       const reply = await askAgent(text, region);
       setLog((l) => [...l, { role: 'agent', text: reply.answer, meta: reply }]);
+      // Execute the last map intent of the turn. The agent may call show_on_map
+      // more than once while reasoning; the final one is what it settled on.
+      const action = reply.map_actions?.[reply.map_actions.length - 1];
+      if (action && onMapAction) onMapAction(action.region, action.activate_layers);
     } catch (e) {
       setLog((l) => [...l, { role: 'agent', text: `The agent could not be reached: ${(e as Error).message}` }]);
     } finally { setBusy(false); }
-  }, [busy, region]);
+  }, [busy, region, onMapAction]);
 
   return (
     <>
@@ -359,7 +371,12 @@ function Assistant({ regions, region }: { regions: Region[]; region: string }) {
                   <div className="meta">
                     <span>agent: {m.meta.agent}</span>
                     <span>route: {m.meta.route_method} ({m.meta.route_confidence})</span>
-                    <span>tools: {m.meta.tools_called.join(', ') || 'none'}</span>
+                    <span>tools: {m.meta.tools_called.join(' → ') || 'none'}</span>
+                    {m.meta.map_actions?.length > 0 && (
+                      <span style={{ color: 'var(--accent)' }}>
+                        map → {m.meta.map_actions[m.meta.map_actions.length - 1].region}
+                      </span>
+                    )}
                     <span style={{ color: m.meta.grounded ? 'var(--obs)' : 'var(--danger)' }}>
                       {m.meta.grounded ? 'grounded' : 'GROUNDING VIOLATION'}</span>
                     {m.meta.degraded && <span style={{ color: 'var(--index)' }}>degraded: tool output only</span>}
@@ -412,21 +429,21 @@ const CONTRIB_DETAIL: {
     state: 'blocked',
     label: 'INSTRUMENT READY · NOT RUN',
     dataset: 'Versioned 28-question benchmark; ~1/3 must be refused',
-    instrument: 'Grounding validator — 4 checks, scored at 100% over 15 labelled cases in experiment 9a',
+    instrument: 'Grounding validator — 4 checks, scored at 100% over 15 labelled cases in experiment 9a; Gemini native function calling',
     metric: 'Grounding-violation rate, tool-invocation accuracy, refusal correctness, latency',
     result:
-      'Not executed. Needs ANTHROPIC_API_KEY on the deployment. The validator, the benchmark and the chat_turns audit log that would hold the results all exist; the deployed validator is now parity-tested against the scored one.',
+      'Not executed. Needs GEMINI_API_KEY on the deployment. The validator, the 28-question benchmark, the Gemini tool-calling loop and the chat_turns audit log that would hold the results all exist; the deployed validator is parity-tested against the scored one.',
   },
   {
     id: 'C2',
     what: 'Quantified degradation under modality loss',
-    state: 'not-trained',
-    label: 'NOT EXECUTED',
-    dataset: 'Sen1Floods11, band presets sar_only → full',
-    instrument: 'Modality ablation over the flood segmentation model',
-    metric: 'IoU, Dice, F1, precision, recall per band stack',
+    state: 'blocked',
+    label: 'PARTIALLY EXECUTED',
+    dataset: 'Sen1Floods11 — two arms trained, three blocked on ancillary rasters',
+    instrument: 'Modality ablation; seed, schedule, fold and selection region held fixed',
+    metric: 'IoU, F1, precision, recall per band stack, on held-out India',
     result:
-      'Not executed. Depends on a trained flood model, which does not exist — the Sen1Floods11 archive is not retrievable from the build environment and training needs a GPU. The band presets the ablation sweeps are defined and tested.',
+      'Executed for SAR vs SAR+ratio, and the result is negative: removing the VV/VH ratio costs 0.0019 IoU (0.5211 vs 0.5230), far below the spread between regions. The ratio carries nothing the network cannot derive from VV and VH separately. Precision/recall moves more than IoU does — SAR-only is more precise and less sensitive, which matters where a missed inundation and a false one cost differently. Rainfall and DEM arms need co-registered rasters Sen1Floods11 does not ship.',
   },
   {
     id: 'C3',
@@ -437,7 +454,7 @@ const CONTRIB_DETAIL: {
     instrument: 'Region-disjoint evaluation (ADR-009)',
     metric: 'IoU gap between source and urban target, with a confidence interval',
     result:
-      'Not executed. Same blocker as C2. The leave-one-region-out split machinery, the leakage guard and the segmentation metrics are implemented and tested.',
+      'Not executed. The model exists and the protocol is implemented, but the target does not: Sen1Floods11 contains no urban Indian flood imagery, and no labelled Mumbai event has been acquired. Running it would need a Copernicus EMS or UNOSAT delineation over an urban Indian flood, co-registered to Sentinel-1.',
   },
   {
     id: 'C4',
@@ -635,13 +652,22 @@ export default function Page() {
 
             <div className="grid grid-2" style={{ marginTop: 16 }}>
               <ModelStatus
-                name="Deep flood segmentation"
-                version="not implemented"
-                dataset="Sen1Floods11 — 446 hand-labelled chips, 11 events"
-                split="Leave-one-region-out (ADR-009)"
-                testRegion="Held out per fold; Bolivia reserved untouched"
-                status="BLOCKED"
-                blocker="Not written. The split machinery, the band math, the leakage-safe normalisation and the segmentation metrics that would evaluate it all exist and are tested, but the network, its training loop and its weights do not. Two things gate it: the Sen1Floods11 archive is not retrievable from the environment that built this deployment, and training needs a GPU."
+                name="Flood U-Net (VV, VH, VV/VH ratio)"
+                version="1.0.0 · loro_india"
+                dataset="Sen1Floods11 v1.1 HandLabeled — 446 chips, 11 flood events"
+                split="Leave-one-region-out (ADR-009); India held out entirely"
+                testRegion="India, 68 chips — influenced neither training nor selection"
+                status="READY"
+                metrics={[
+                  ['IoU (India, test)', '0.523'],
+                  ['F1', '0.687'],
+                  ['Precision', '0.751'],
+                  ['Recall', '0.633'],
+                  ['vs Otsu baseline', '+0.148 IoU'],
+                  ['Per-chip IoU median', '0.223'],
+                  ['Parameters', '7.76 M'],
+                ]}
+                blocker="Validation IoU on the fold's validation region (Mekong) was 0.868; the test score on India is 0.523. That gap is what quoting the validation number would have overstated it by. Pooled IoU is also dominated by chips with large water bodies — the per-chip median is 0.223, so the model does well where there is a lot of water and poorly where there is little."
               />
               <ModelStatus
                 name="Otsu classical baseline (VV, no HAND mask)"
@@ -803,7 +829,18 @@ export default function Page() {
           </>
         )}
 
-        {section === 'assistant' && <Assistant regions={regions} region={region} />}
+        {section === 'assistant' && (
+          <Assistant
+            regions={regions}
+            region={region}
+            onMapAction={(regionId) => {
+              // Switch the dashboard's region so the map reflects what the
+              // agent just talked about, then show it.
+              setRegion(regionId);
+              setSection('map');
+            }}
+          />
+        )}
         {section === 'research' && <Research experiments={experiments} />}
 
         {section === 'about' && (

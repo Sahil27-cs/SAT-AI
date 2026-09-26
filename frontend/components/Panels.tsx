@@ -50,9 +50,9 @@ export function pipelineFor(area: StudyArea | undefined, result: HazardResult | 
     },
     {
       name: 'Flood model',
-      state: 'blocked',
+      state: 'ok',
       detail:
-        'Classical baselines implemented (Otsu + HAND, per-pixel ensemble). The deep segmentation model is not written, and no model has been trained or scored',
+        'U-Net trained on Sen1Floods11 and scored region-disjoint: IoU 0.523 on held-out India, beating the Otsu baseline at 0.375',
     },
     {
       name: 'Risk engine',
@@ -62,12 +62,13 @@ export function pipelineFor(area: StudyArea | undefined, result: HazardResult | 
     {
       name: 'Explainability',
       state: 'blocked',
-      detail: 'Depends on a trained model',
+      detail:
+        'The trained model exists, so this is no longer gated on it. Attribution maps are not implemented',
     },
     {
       name: 'AI assistant',
       state: result ? 'ok' : 'partial',
-      detail: 'Tools, router and grounding validator run; language layer needs ANTHROPIC_API_KEY',
+      detail: 'Gemini tool-calling loop, router and 4-check grounding validator run; needs GEMINI_API_KEY',
     },
   ];
 }
