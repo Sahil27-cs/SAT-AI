@@ -24,16 +24,33 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import time
 from collections import deque
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
-import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, ValidationError
+# This module's own directory, on sys.path.
+#
+# The serving-plane modules import each other by bare name (`from gemini import
+# ...`), which is how Vercel's Python runtime has historically laid them out.
+# It does not always hold: depending on how the handler is loaded, the project
+# root is on sys.path and `api/` is not, and every sibling import then fails
+# with ModuleNotFoundError at request time. That is exactly what happened on the
+# first Gemini deployment -- /health reported "No module named 'gemini'" while
+# the study-area catalogue loaded fine, because the catalogue is read by file
+# path and the modules are read by import.
+#
+# Inserting the directory explicitly makes both layouts work and costs nothing.
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
+import httpx  # noqa: E402
+from fastapi import FastAPI, HTTPException, Query, Request  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from pydantic import BaseModel, Field, ValidationError  # noqa: E402
 
 log = logging.getLogger("satai.api")
 logging.basicConfig(level=os.environ.get("SATAI_LOG_LEVEL", "INFO"))
