@@ -1,9 +1,8 @@
-"""Flood model training and inference. Runs in the ML plane, never in serving.
+"""Flood segmentation: dataset, model, losses, training, evaluation, inference.
 
-Nothing here has been executed: the Sen1Floods11 archive is not retrievable from
-the environment this repository was built in, and training needs a GPU. The
-scripts are written so the run is reproducible once the data is in hand, which
-is a different thing from a result — and this project reports only the latter.
+Runs in the ML plane (ADR-001). The serving plane never imports this and never
+sees torch -- inference happens in batch and writes artifacts that FastAPI then
+reads.
 """
 
 from __future__ import annotations

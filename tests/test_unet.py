@@ -7,8 +7,9 @@ what goes wrong in a segmentation pipeline goes wrong in the shapes and the band
 ordering, and those failures surface twenty minutes into a GPU run if nothing
 catches them first.
 
-The tests that need torch skip rather than fail, so the suite means the same
-thing on a laptop, in CI and on a training box.
+Nothing here imports torch. The network is in ``ml/flood/model.py`` and is
+exercised by an actual training run, not by a unit test that builds it and
+throws it away.
 """
 
 from __future__ import annotations
@@ -16,13 +17,7 @@ from __future__ import annotations
 import pytest
 
 from satai.errors import ValidationError
-from satai.ml.unet import (
-    BAND_PRESETS,
-    FloodUNetConfig,
-    build_model,
-    plan_shapes,
-    torch_available,
-)
+from satai.ml.unet import BAND_PRESETS, FloodUNetConfig, plan_shapes
 
 
 class TestBandContract:
@@ -119,24 +114,3 @@ class TestShapePlanning:
     def test_the_output_carries_one_class_per_configured_class(self) -> None:
         shapes = plan_shapes(FloodUNetConfig(n_classes=1), batch=2)
         assert shapes["output"] == (2, 1, 512, 512)
-
-
-class TestBuild:
-    def test_building_without_torch_explains_rather_than_tracebacks(self) -> None:
-        """The common way to hit this is running training code on the serving
-        host, which deserves a sentence rather than an ImportError."""
-        if torch_available():
-            pytest.skip("torch is installed; the no-torch path cannot be exercised")
-        with pytest.raises(ValidationError, match="PyTorch is not installed"):
-            build_model(FloodUNetConfig())
-
-    def test_the_model_accepts_a_chip_and_returns_a_mask(self) -> None:
-        if not torch_available():
-            pytest.skip("torch is not installed in this environment")
-        import torch
-
-        config = FloodUNetConfig.from_preset("sar_ratio", chip_px=64, depth=5)
-        model = build_model(FloodUNetConfig(**{**config.__dict__, "encoder_weights": None}))
-        with torch.no_grad():
-            out = model(torch.zeros(1, config.in_channels, 64, 64))
-        assert tuple(out.shape) == (1, 1, 64, 64)

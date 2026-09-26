@@ -46,6 +46,13 @@ data/interim/**
 
 # --- Models / experiment outputs ---
 models/**
+# ...except the records that make a run identifiable and reproducible. The
+# weights are large and regenerable; the manifest, the metrics and the fitted
+# normalisation statistics are small and are the only evidence that a reported
+# number came from a real run.
+!models/*/
+!models/**/*.json
+
 !models/.gitkeep
 *.pt
 *.pth

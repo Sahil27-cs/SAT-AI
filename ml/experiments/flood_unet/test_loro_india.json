@@ -1,0 +1,108 @@
+{
+  "experiment": "flood_unet_test",
+  "run_at": "2026-09-26T18:52:43.355916+00:00",
+  "checkpoint": "models\\flood\\flood_unet_loro_india_sar_ratio_best.pt",
+  "fold": "loro_india",
+  "partition": "test",
+  "protocol": "leave_one_region_out",
+  "region_disjoint": true,
+  "regions": [
+    "India"
+  ],
+  "n_chips": 68,
+  "bands": [
+    "vv_db",
+    "vh_db",
+    "vv_vh_ratio"
+  ],
+  "selection": {
+    "checkpoint_selected_on": [
+      "Mekong"
+    ],
+    "note": "The checkpoint was selected by validation IoU on a different held-out region. The scores below are on the test region, which influenced neither training nor selection."
+  },
+  "headline_threshold": 0.5,
+  "headline": {
+    "iou": 0.523,
+    "dice": 0.6868,
+    "f1": 0.6868,
+    "precision": 0.7506,
+    "recall": 0.6331,
+    "specificity": 0.9703,
+    "accuracy": 0.9286
+  },
+  "confusion": {
+    "tp": 1170974,
+    "fp": 389139,
+    "fn": 678638,
+    "tn": 12713664
+  },
+  "per_chip_iou": {
+    "median": 0.2232,
+    "p25": 0.0635,
+    "p75": 0.5226,
+    "min": 0.0,
+    "max": 0.8729
+  },
+  "threshold_sweep": {
+    "0.1": {
+      "iou": 0.5052,
+      "f1": 0.6713,
+      "precision": 0.6183,
+      "recall": 0.7343
+    },
+    "0.2": {
+      "iou": 0.5159,
+      "f1": 0.6806,
+      "precision": 0.6847,
+      "recall": 0.6766
+    },
+    "0.3": {
+      "iou": 0.5195,
+      "f1": 0.6838,
+      "precision": 0.712,
+      "recall": 0.6578
+    },
+    "0.4": {
+      "iou": 0.5217,
+      "f1": 0.6857,
+      "precision": 0.7319,
+      "recall": 0.645
+    },
+    "0.5": {
+      "iou": 0.523,
+      "f1": 0.6868,
+      "precision": 0.7506,
+      "recall": 0.6331
+    },
+    "0.6": {
+      "iou": 0.5231,
+      "f1": 0.6869,
+      "precision": 0.7732,
+      "recall": 0.6179
+    },
+    "0.7": {
+      "iou": 0.5212,
+      "f1": 0.6852,
+      "precision": 0.8016,
+      "recall": 0.5984
+    },
+    "0.8": {
+      "iou": 0.5146,
+      "f1": 0.6795,
+      "precision": 0.833,
+      "recall": 0.5738
+    },
+    "0.9": {
+      "iou": 0.4979,
+      "f1": 0.6648,
+      "precision": 0.8712,
+      "recall": 0.5374
+    }
+  },
+  "caveats": [
+    "Trained on Sen1Floods11, 11 flood events. Generalisation beyond those regimes is untested.",
+    "Known failure mode: urban double-bounce RAISES backscatter over flooded streets, inverting the signature this model relies on. Contribution C3 measures that degradation directly.",
+    "The threshold sweep is reported as a curve. Selecting the threshold that maximises test IoU would be tuning on the test set; the headline uses the a-priori 0.5."
+  ]
+}

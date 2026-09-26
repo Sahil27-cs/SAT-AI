@@ -1,11 +1,16 @@
-"""Flood segmentation network: configuration, shape planning, and the model.
+"""Flood segmentation: the band contract and shape arithmetic.
 
-**No weights ship with this module and none have been trained.** What is here is
-the architecture, the band contract it expects, and the shape arithmetic that
-decides whether a given chip and encoder are compatible. That last part is the
-reason this module is testable at all without a GPU: most of what goes wrong in
-a segmentation pipeline goes wrong in the shapes and the band ordering, hours
-before a loss curve would have told you.
+**The network itself lives in ``ml/flood/model.py``**, which is self-contained
+and needs torch. This module holds only what can be checked without it: the
+band presets an experiment refers to, the configuration that travels into a
+checkpoint, and the shape arithmetic that decides whether a chip size and depth
+are compatible.
+
+That split is deliberate. Most of what goes wrong in a segmentation pipeline
+goes wrong in the shapes and the band ordering, hours before a loss curve would
+say anything -- and those are exactly the parts CI can check on a machine with
+no GPU and no torch. Keeping two builders here and in ``ml/flood`` would have
+been the drift this project keeps catching elsewhere.
 
 Design, and why
 ---------------
@@ -36,14 +41,13 @@ from satai.errors import ValidationError
 from satai.logging import get_logger
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, torch is not a hard dependency
-    import torch
+    pass
 
 log = get_logger(__name__)
 
 __all__ = [
     "BAND_PRESETS",
     "FloodUNetConfig",
-    "build_model",
     "plan_shapes",
     "torch_available",
 ]
@@ -207,47 +211,3 @@ def plan_shapes(config: FloodUNetConfig, batch: int = 8) -> dict[str, tuple[int,
             f"{shapes['input'][-2:]} vs output {shapes['output'][-2:]}"
         )
     return shapes
-
-
-def build_model(config: FloodUNetConfig) -> torch.nn.Module:
-    """Construct the network. Requires torch and segmentation-models-pytorch.
-
-    Raises a stated error rather than an ImportError traceback when the training
-    stack is absent, because the common case for that is someone running this on
-    the serving machine by mistake.
-    """
-    if not torch_available():
-        raise ValidationError(
-            "PyTorch is not installed in this environment. The flood model is "
-            "trained in a GPU environment (Colab, Kaggle, or a local CUDA box) "
-            "and exported to ONNX for CPU serving -- see ADR-001. Install the "
-            "training extras there, not on the serving host."
-        )
-    try:
-        import segmentation_models_pytorch as smp
-    except ImportError as exc:  # pragma: no cover - depends on the environment
-        raise ValidationError(
-            "segmentation-models-pytorch is not installed; it provides the U-Net "
-            "and the pretrained encoders. See environment.yml."
-        ) from exc
-
-    import torch
-
-    torch.manual_seed(config.seed)
-    model: torch.nn.Module = smp.Unet(
-        encoder_name=config.encoder,
-        encoder_weights=config.encoder_weights,
-        in_channels=config.in_channels,
-        classes=config.n_classes,
-        encoder_depth=config.depth,
-    )
-    log.info(
-        "flood u-net built",
-        extra={
-            "encoder": config.encoder,
-            "in_channels": config.in_channels,
-            "preset": config.preset_name,
-            "pretrained_first_layer": config.pretrained_first_layer_reusable,
-        },
-    )
-    return model

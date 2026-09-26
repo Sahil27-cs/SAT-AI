@@ -1,0 +1,54 @@
+{
+  "experiment": "flood_model_vs_baseline",
+  "run_at": "2026-09-26T18:53:54.913101+00:00",
+  "protocol": "leave-one-region-out; both scored on the same held-out region",
+  "test_region": "India",
+  "n_chips": 68,
+  "baseline": {
+    "method": "Otsu on Sentinel-1 VV, unimodality guard 0.66, no HAND mask",
+    "supervised": false,
+    "iou": 0.3754,
+    "f1": 0.5459,
+    "precision": 0.7293,
+    "recall": 0.4362,
+    "guard_selected_by": "leave-one-region-out over 11 regions",
+    "guard_optimism": 0.0
+  },
+  "deep_model": {
+    "method": "U-Net, 4 levels, base width 32, trained from scratch",
+    "supervised": true,
+    "bands": [
+      "vv_db",
+      "vh_db",
+      "vv_vh_ratio"
+    ],
+    "n_parameters": 7763041,
+    "epochs_run": 32,
+    "iou": 0.523,
+    "f1": 0.6868,
+    "precision": 0.7506,
+    "recall": 0.6331,
+    "per_chip_iou_median": 0.2232,
+    "per_chip_iou_iqr": [
+      0.0635,
+      0.5226
+    ]
+  },
+  "delta_iou": 0.1476,
+  "relative_gain": 0.3932,
+  "verdict": "The deep model beats the classical baseline on the held-out region.",
+  "validation_to_test_gap": {
+    "validation_iou": 0.8678907220544007,
+    "validation_region": [
+      "Mekong"
+    ],
+    "test_iou": 0.523,
+    "gap": 0.3449,
+    "note": "The checkpoint was selected on validation IoU over a different held-out region. The gap between that and the test score is the cost of treating any single held-out region as representative -- it is a property of the data, not a defect of the run, and quoting the validation number as the model's score would overstate it by exactly this much."
+  },
+  "caveats": [
+    "Pooled IoU is dominated by chips with large water bodies. The per-chip median is far below the pooled figure, which means the model does well where there is a lot of water and poorly where there is little. Both numbers are reported; neither alone is honest.",
+    "The baseline runs without a HAND terrain mask, because Sen1Floods11 ships none. With terrain it would score higher, so the margin here is an upper bound on the deep model's advantage.",
+    "Neither model has seen an urban Indian scene. Contribution C3 measures that transfer, and it is not measured by this comparison."
+  ]
+}
