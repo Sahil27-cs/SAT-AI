@@ -47,7 +47,7 @@ export interface StudyArea {
   primaryHazards: string[];
   studyRole: StudyRole;
   status: string;
-  hasLabels: boolean;
+  labelSourcesDeclared: boolean;
   labelSources: string[];
   selectionRationale: string;
   notes: string | null;

@@ -24,7 +24,7 @@
       ],
       "studyRole": "training",
       "status": "candidate",
-      "hasLabels": true,
+      "labelSourcesDeclared": true,
       "labelSources": [
         "Sen1Floods11 (contains an India event; exact site to be VERIFIED at ingestion, Phase 2)",
         "Copernicus EMS rapid mapping activations (per-event)"
@@ -59,7 +59,7 @@
       ],
       "studyRole": "transfer_evaluation",
       "status": "candidate",
-      "hasLabels": true,
+      "labelSourcesDeclared": true,
       "labelSources": [
         "Copernicus EMS activations (event-dependent)",
         "None dense enough for supervised training -- transfer target only"
@@ -94,7 +94,7 @@
       ],
       "studyRole": "candidate",
       "status": "candidate",
-      "hasLabels": true,
+      "labelSourcesDeclared": true,
       "labelSources": [
         "Copernicus EMS activations",
         "UNOSAT flood extents (event-dependent)"
@@ -128,7 +128,7 @@
       ],
       "studyRole": "transfer_evaluation",
       "status": "candidate",
-      "hasLabels": true,
+      "labelSourcesDeclared": true,
       "labelSources": [
         "Copernicus EMS activations for the August 2018 Kerala floods (activation code NOT yet confirmed)"
       ],
@@ -161,7 +161,7 @@
       ],
       "studyRole": "transfer_evaluation",
       "status": "candidate",
-      "hasLabels": true,
+      "labelSourcesDeclared": true,
       "labelSources": [
         "UNOSAT satellite-detected water extent products, Sentinel-1, September-October 2024"
       ],
@@ -212,7 +212,7 @@
       ],
       "studyRole": "transfer_evaluation",
       "status": "candidate",
-      "hasLabels": true,
+      "labelSourcesDeclared": true,
       "labelSources": [
         "Copernicus EMS EMSR357 delineation products, Odisha Coast, May 2019",
         "IBTrACS v4 best tracks (NOAA NCEI)"
@@ -263,7 +263,7 @@
       ],
       "studyRole": "candidate",
       "status": "candidate",
-      "hasLabels": false,
+      "labelSourcesDeclared": false,
       "labelSources": [],
       "selectionRationale": "The wildfire AOI. Chir pine forest across the Kumaon hills burns nearly every pre-monsoon season, and NASA FIRMS provides continuous VIIRS and MODIS active-fire detections over it, which is the one hazard stream in this project that is a direct instrument observation rather than a model output. That makes it the cleanest place to demonstrate the observation-versus-model distinction the provenance contract is built around: a thermal anomaly is a measurement at overpass time, a fire-danger index is not.",
       "notes": "NO VERIFIED EVENT. Uttarakhand's recurrent forest fires are well documented, but no specific burn has yet been checked to the standard the `events` block requires -- a named sensor, a confirmed acquisition and a retrievable product. FIRMS detections must be queried for an actual date window and bounding box before an event is recorded here. Until then this AOI supports fire-danger indices and FIRMS ingestion, and the interface shows no burned-area analysis for it. `label_sources` is empty on purpose: there is no burn-severity ground truth here, so any dNBR product over this AOI is unvalidated and must be labelled as such.",

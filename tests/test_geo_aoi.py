@@ -73,9 +73,17 @@ class TestAOI:
         expected = aoi.approx_area_km2 / ((512 * 10 / 1000) ** 2)
         assert abs(aoi.approx_tile_count() - expected) <= 1
 
-    def test_has_labels_reflects_supervised_feasibility(self) -> None:
-        assert self._aoi(label_sources=[]).has_labels is False
-        assert self._aoi(label_sources=["Sen1Floods11"]).has_labels is True
+    def test_label_sources_declared_is_about_declaration_not_possession(self) -> None:
+        """Naming a source is not having it.
+
+        `configs/aoi.yaml` names UNOSAT products for the Nepal AOI, which have
+        not been downloaded. The flag was called `has_labels` and served as
+        `hasLabels`, which reads as possession -- and the agent passed it to the
+        model as `has_ground_truth`, where it would have become a sentence
+        claiming labels exist.
+        """
+        assert self._aoi(label_sources=[]).label_sources_declared is False
+        assert self._aoi(label_sources=["Sen1Floods11"]).label_sources_declared is True
 
     def test_is_immutable(self) -> None:
         with pytest.raises(PydanticValidationError):

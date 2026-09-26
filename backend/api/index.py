@@ -505,9 +505,10 @@ async def list_study_areas() -> dict[str, Any]:
       these, so without this endpoint the health check reported a number no
       caller could reconcile against anything.
 
-    `status` and `hasLabels` per area are what keep the difference legible: an
-    area listed here with no results is a stated intention, not a claim of
-    coverage.
+    `status` and `labelSourcesDeclared` per area are what keep the difference
+    legible: an area listed here with no results is a stated intention, not a
+    claim of coverage, and a declared label source is a source that has been
+    named rather than obtained.
     """
     areas = study_areas()
     return {

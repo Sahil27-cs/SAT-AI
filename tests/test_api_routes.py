@@ -472,7 +472,7 @@ def test_study_areas_says_that_being_listed_is_not_coverage(client: Any) -> None
     assert "does not mean" in body["caveat"]
     for area in body["studyAreas"]:
         assert "status" in area, area["id"]
-        assert "hasLabels" in area, area["id"]
+        assert "labelSourcesDeclared" in area, area["id"]
 
 
 def test_the_health_count_matches_the_catalogue_endpoint(client: Any) -> None:

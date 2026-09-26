@@ -91,7 +91,7 @@ def build_payload() -> dict[str, Any]:
                 "primaryHazards": list(aoi.primary_hazards),
                 "studyRole": aoi.study_role.value,
                 "status": aoi.status,
-                "hasLabels": aoi.has_labels,
+                "labelSourcesDeclared": aoi.label_sources_declared,
                 "labelSources": list(aoi.label_sources),
                 # Collapsed to a single line: these are multi-line YAML folded
                 # scalars and the ragged internal whitespace renders badly.

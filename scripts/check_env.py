@@ -251,10 +251,11 @@ def check_project() -> bool:
             OK, "AOI registry", f"{len(registry)} areas defined, {len(registry.selected)} selected"
         )
         for aoi in registry.aois:
+            labels = "  [label source named]" if aoi.label_sources_declared else "  [none named]"
             print(
                 f"{DIM}       - {aoi.id:<20} {aoi.approx_area_km2:>8,.0f} km2  "
                 f"~{aoi.approx_tile_count():>5,} tiles  {aoi.utm_epsg}"
-                f"{'  [labels]' if aoi.has_labels else '  [no labels]'}{RESET}"
+                f"{labels}{RESET}"
             )
     except Exception as exc:  # noqa: BLE001
         _row(FAIL, "AOI registry", str(exc))

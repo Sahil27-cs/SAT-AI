@@ -216,7 +216,10 @@ def _study_area(region: str, study_areas: list[dict[str, Any]]) -> dict[str, Any
         "bbox": area["bbox"],
         "primary_hazards": area["primaryHazards"],
         "study_role": area["studyRole"],
-        "has_ground_truth": area["hasLabels"],
+        # Declared, not obtained: see satai.geo.aoi. Named this way because
+        # the model reads it and turns it into a sentence -- "has ground
+        # truth" would become a claim that labels exist for the area.
+        "label_source_declared": area["labelSourcesDeclared"],
         "verified_events": [
             {
                 "name": e["name"],

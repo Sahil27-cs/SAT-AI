@@ -202,8 +202,15 @@ class AOI(BaseModel):
         return max(1, math.ceil(self.approx_area_km2 / tile_km2))
 
     @property
-    def has_labels(self) -> bool:
-        """Whether supervised training is possible in this AOI at all."""
+    def label_sources_declared(self) -> bool:
+        """Whether a ground-truth source is *named* for this AOI.
+
+        Declared, not obtained. `configs/aoi.yaml` names UNOSAT products for the
+        Nepal AOI and Sen1Floods11 for the Indian ones; only the latter has been
+        downloaded. A True here means supervised work is conceivable, not that
+        anything is on disk -- which is why the name says "declared" and why the
+        served payload does not call it `hasLabels`.
+        """
         return bool(self.label_sources)
 
     @property
