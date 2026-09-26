@@ -54,6 +54,11 @@ dev = [
     # would serve numbers that are not the ones the model was evaluated on.
     "onnx>=1.16",
     "onnxruntime>=1.18",
+    # torch >= 2.9 routes `torch.onnx.export` through the dynamo exporter, which
+    # imports onnxscript. Without it the export raises ModuleNotFoundError on a
+    # current torch while working on an older one -- exactly the kind of
+    # difference that passes on a developer machine and fails in CI.
+    "onnxscript>=0.1",
 ]
 
 [project.scripts]

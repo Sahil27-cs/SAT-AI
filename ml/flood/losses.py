@@ -20,8 +20,6 @@ near-empty, which is exactly where training starts.
 
 from __future__ import annotations
 
-from typing import cast
-
 import torch
 from torch import nn
 
@@ -63,7 +61,12 @@ def masked_dice(
     intersection = (probabilities * truth).sum(dim=(1, 2, 3))
     cardinality = probabilities.sum(dim=(1, 2, 3)) + truth.sum(dim=(1, 2, 3))
     dice = (2.0 * intersection + smooth) / (cardinality + smooth)
-    return cast(torch.Tensor, 1.0 - dice.mean())
+    # Annotated local rather than a cast: torch's stubs disagree between
+    # versions about whether this expression is a Tensor or Any, so a cast is
+    # necessary on one and flagged as redundant on the next. The annotation
+    # satisfies --strict either way.
+    loss: torch.Tensor = 1.0 - dice.mean()
+    return loss
 
 
 class FloodLoss(nn.Module):

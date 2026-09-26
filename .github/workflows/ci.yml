@@ -1,9 +1,10 @@
 # CI for SAT-AI.
 #
-# Three jobs, deliberately separated so a failure names its own cause:
+# Four jobs, deliberately separated so a failure names its own cause:
 #
 #   python    lint, type-check and test the shared package, the serving plane
 #             and the ML pipeline
+#   geo       the rasterio-dependent tests, which the python job skips
 #   frontend  type-check and build the Next.js dashboard
 #   secrets   gitleaks over the full history
 #
@@ -12,8 +13,12 @@
 # conda-forge on a GitHub runner costs several minutes per job, and nothing in
 # `tests/` needs it -- the preprocessing and provider tests are pure bookkeeping
 # over chip identifiers and recorded catalogue responses (see tests/conftest.py).
-# If a test ever does need rasterio it should be marked `slow` and run in a
-# separate scheduled workflow rather than slowing this one down for everyone.
+# ADR-004 says that if a test ever does need rasterio it belongs in a separate
+# workflow rather than slowing this one down for everyone. `geo` is that
+# workflow: the inference tests read and write real GeoTIFFs, so they cannot be
+# faked, and leaving them skipped everywhere but one laptop is not much better
+# than not having them. rasterio's own manylinux wheel bundles its GDAL, so this
+# is not the conda chain ADR-004 is about -- geopandas and the rest stay out.
 
 name: CI
 
@@ -82,6 +87,29 @@ jobs:
 
       - name: Pytest
         run: pytest -q --cov --cov-report=term-missing
+
+  geo:
+    name: geo (rasterio)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          # rasterio only. Its wheel carries its own GDAL; the conda-forge stack
+          # ADR-004 is about (geopandas, pyproj, the GDAL bindings) is not here.
+          pip install rasterio
+
+      - name: Inference and raster tests
+        run: pytest -q tests/test_flood_inference.py
 
   frontend:
     name: frontend

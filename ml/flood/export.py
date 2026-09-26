@@ -88,6 +88,9 @@ def export_onnx(
         str(destination),
         input_names=["bands"],
         output_names=["logits"],
+        # `dynamic_axes`, not `dynamic_shapes`: torch >= 2.9 prefers the latter
+        # and warns, but it does not exist on the older releases this repository
+        # also has to export from. The warning is the portable choice's cost.
         dynamic_axes={
             "bands": {0: "batch", 2: "height", 3: "width"},
             "logits": {0: "batch", 2: "height", 3: "width"},

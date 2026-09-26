@@ -22,7 +22,6 @@ defaults fit a 512x512 chip at batch 8 on an RTX 4050.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
 
 import torch
 from torch import nn
@@ -67,9 +66,13 @@ class DoubleConv(nn.Module):
         self.block = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # nn.Module.__call__ is typed as returning Any, so the cast is what
-        # keeps the declared return type meaningful under --strict.
-        return cast(torch.Tensor, self.block(x))
+        # Annotated local rather than a cast: nn.Module.__call__ is typed as
+        # returning Any in some torch versions and a Tensor in others, so a
+        # cast is required on one and flagged as redundant on the next. The
+        # annotation keeps the declared return type meaningful under --strict
+        # either way.
+        out: torch.Tensor = self.block(x)
+        return out
 
 
 class UNet(nn.Module):
