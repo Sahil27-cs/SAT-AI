@@ -23,6 +23,14 @@ import {
   ESTABLISHED, HAZARDS, LATENCY, LIMITATIONS, SAMPLE_QUESTIONS, SCOPE_OVERALL,
   Scope, XAI_METHODS,
 } from '@/lib/content';
+import {
+  CATALOGUE_VERSION, ROLE_LABEL, STUDY_AREAS, StudyArea,
+  areasWithVerifiedEvents, verifiedEvents,
+} from '@/lib/study-areas';
+import { CommandMap } from '@/components/CommandMap';
+import {
+  AnalysisPanel, DataStatus, ModelStatus, PipelineStrip, SatellitePanel, pipelineFor,
+} from '@/components/Panels';
 
 const SECTIONS = [
   { group: 'Monitoring', items: [['overview','Overview'],['map','Risk Map'],['flood','Flood'],
@@ -125,6 +133,63 @@ function HazardSection({ hazard, region }: { hazard: string; region: string }) {
         </>
       )}
     </>
+  );
+}
+
+// --- region selector ---
+
+/**
+ * Cards rather than a dropdown. With seven regions across two countries, three
+ * study roles and four hazards, the selector is carrying real information —
+ * which regions have a verified event, which are held-out transfer targets —
+ * and a `<select>` throws all of it away.
+ */
+function RegionSelector({
+  areas, selected, onSelect,
+}: { areas: StudyArea[]; selected: string; onSelect: (id: string) => void }) {
+  return (
+    <section style={{ marginBottom: 20 }}>
+      <div className="pill-row" style={{ marginBottom: 10 }}>
+        <span className="panel-eyebrow">Study area</span>
+        <span className="muted">
+          {areas.length} configured · {new Set(areas.map((a) => a.country)).size} countries
+        </span>
+      </div>
+      <div className="region-grid">
+        {areas.map((a) => {
+          const events = verifiedEvents(a);
+          return (
+            <button
+              key={a.id}
+              type="button"
+              className={`region-card ${a.id === selected ? 'active' : ''}`}
+              onClick={() => onSelect(a.id)}
+              aria-pressed={a.id === selected}
+            >
+              <div className="region-card-top">
+                <span className="region-card-name">{a.name}</span>
+                <span className={`role-chip ${a.studyRole}`} title={ROLE_LABEL[a.studyRole].help}>
+                  {ROLE_LABEL[a.studyRole].label}
+                </span>
+              </div>
+              <span className="region-card-country">{a.country}</span>
+              <div className="region-card-meta">
+                {a.primaryHazards.map((h) => (
+                  <span key={h} className="region-card-haz">{h}</span>
+                ))}
+              </div>
+              {events.length > 0 ? (
+                <span className="region-card-event">
+                  ✓ {events[0].occurredOn} · {events[0].sensor.split(' ')[0]}
+                </span>
+              ) : (
+                <span className="muted" style={{ fontSize: 10.5 }}>no verified event</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -415,7 +480,12 @@ export default function Page() {
     getHealth().then(setHealth);
   }, []);
 
-  const current = regions.find((r) => r.id === region);
+  // Study areas come from the generated catalogue, not from the database. The
+  // catalogue is configuration and carries all seven regions; the database only
+  // holds the four that were seeded, and results for any of them. Sourcing the
+  // selector from the database would silently hide Nepal, Odisha and
+  // Uttarakhand because no row exists for them yet.
+  const area: StudyArea | undefined = STUDY_AREAS.find((a) => a.id === region);
   const done = experiments.filter((e) => e.status === 'complete').length;
 
   return (
@@ -444,62 +514,97 @@ export default function Page() {
       <main className="main">
         {err && <div className="disclaimer">Data layer error: {err}</div>}
 
-        {!['research', 'about'].includes(section) && regions.length > 0 && (
-          <div className="pill-row">
-            <span className="muted">Study area</span>
-            <select className="select" value={region} onChange={(e) => setRegion(e.target.value)}>
-              {regions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-            {current && <span className="badge role">{current.study_role.replace('_', ' ')}</span>}
+        {/* The hero leads the overview; on every other section the selector is
+            the first thing, because the reader has already arrived and is
+            choosing what to look at. */}
+        {section === 'overview' && (
+          <div className="hero">
+            <div>
+              <h1 className="hero-title">
+                AI-driven <span className="accent">multi-hazard intelligence</span> from
+                satellite observation
+              </h1>
+              <p className="hero-sub">
+                Evidence-grounded satellite analysis for flood, wildfire, extreme-weather and
+                post-event damage. Every value carries the model that produced it, the scenes
+                behind it and how old the observation is — and where nothing has been computed,
+                the interface says so rather than showing a number.
+              </p>
+              <div className="hero-tags">
+                <span className="hero-tag">Sentinel-1 SAR</span>
+                <span className="hero-tag">Terrain</span>
+                <span className="hero-tag">Rainfall</span>
+                <span className="hero-tag">Risk engine</span>
+                <span className="hero-tag">Explainability</span>
+                <span className="hero-tag">Grounded agents</span>
+              </div>
+            </div>
           </div>
+        )}
+
+        {!['research', 'about'].includes(section) && (
+          <RegionSelector areas={STUDY_AREAS} selected={region} onSelect={setRegion} />
         )}
 
         {section === 'overview' && (
           <>
-            <h2>Overview</h2>
-            <p className="lede">
-              SAT-AI combines Sentinel-1 SAR, optical, terrain, rainfall and weather data to assess
-              multi-hazard risk over configured study areas in India, and explains its outputs through
-              tool-using agents whose numeric claims are validated against provenance records.
-            </p>
-            <Disclaimer />
-            <div className="grid grid-4">
-              <Stat k="Study areas" v={String(regions.length)} s="configured" />
-              <Stat k="Experiments" v={String(experiments.length)} s={`${done} executed`} />
-              <Stat k="Hazard results" v="0" s="pipeline not yet run" />
-              <Stat k="Latency class" v="Batch" s="revisit-limited, not real-time" />
+            <div className="cmd-map-wrap" style={{ position: 'relative' }}>
+              <CommandMap areas={STUDY_AREAS} selectedId={region} onSelect={setRegion} />
+              <AnalysisPanel area={area} result={null} />
             </div>
 
-            <div className="panel" style={{ marginTop: 16 }}>
-              <div className="panel-title">Honest system status</div>
-              <p>
-                No hazard analyses have been computed yet. The acquisition and model pipelines are
-                implemented and tested, but require the Sen1Floods11 download, Earth Engine
-                credentials and a GPU — none available in the environment that built this deployment.
-              </p>
-              <p style={{ marginTop: 10 }}>
-                Rather than display placeholder extents or invented risk scores, every hazard panel
-                reports the absence and states exactly what would produce the result. The Research
-                section shows the experiments that <em>have</em> run, with their real measured numbers.
-              </p>
+            <h3 style={{ marginTop: 22 }}>Analysis pipeline</h3>
+            <p className="muted" style={{ maxWidth: '72ch', marginBottom: 4 }}>
+              Stage state is derived from what actually exists, not decoration. This is the fastest
+              way to see that the system is wired end to end and where it currently stops.
+            </p>
+            <PipelineStrip stages={pipelineFor(area, null)} />
+
+            <Disclaimer />
+
+            <div className="grid grid-2" style={{ marginTop: 16 }}>
+              <ModelStatus
+                name="Deep flood segmentation"
+                version="not implemented"
+                dataset="Sen1Floods11 — 446 hand-labelled chips, 11 events"
+                split="Leave-one-region-out (ADR-009)"
+                testRegion="Held out per fold; Bolivia reserved untouched"
+                status="BLOCKED"
+                blocker="Not written. The split machinery, the band math, the leakage-safe normalisation and the segmentation metrics that would evaluate it all exist and are tested, but the network, its training loop and its weights do not. Two things gate it: the Sen1Floods11 archive is not retrievable from the environment that built this deployment, and training needs a GPU."
+              />
+              <ModelStatus
+                name="Otsu + HAND classical baseline"
+                version="1.0.0"
+                dataset="Unsupervised — no training data required"
+                split="Evaluated per chip"
+                testRegion="Any"
+                status="READY"
+                blocker="Implemented and unit-tested, including the unimodality guard that stops a dry chip being reported as half water. Scoring it needs the same Sen1Floods11 archive."
+              />
             </div>
 
             <ScopePanel scope={SCOPE_OVERALL} title="Scope" />
 
-            <div className="panel">
-              <div className="panel-title">Study areas</div>
-              <table>
-                <thead><tr><th>Region</th><th>Role</th><th>Area</th><th>Tiles</th><th>Labels</th></tr></thead>
-                <tbody>{regions.map((r) => (
-                  <tr key={r.id}>
-                    <td><strong>{r.name}</strong><div className="muted">{r.id}</div></td>
-                    <td><span className="badge role">{r.study_role.replace('_', ' ')}</span></td>
-                    <td className="num">{r.area_km2.toLocaleString()} km²</td>
-                    <td className="num">{r.tile_count ?? '—'}</td>
-                    <td className="muted">{r.label_sources[0] ?? 'none'}</td>
-                  </tr>))}
-                </tbody>
-              </table>
+            <div className="grid grid-2">
+              <div className="panel">
+                <div className="panel-title">Research register</div>
+                <table>
+                  <tbody>
+                    <tr><td>Study areas configured</td><td className="num">{STUDY_AREAS.length}</td></tr>
+                    <tr><td>Countries</td><td className="num">
+                      {new Set(STUDY_AREAS.map((a) => a.country)).size}
+                    </td></tr>
+                    <tr><td>Verified historical events</td><td className="num">
+                      {areasWithVerifiedEvents().reduce((n, a) => n + verifiedEvents(a).length, 0)}
+                    </td></tr>
+                    <tr><td>Experiments registered</td><td className="num">{experiments.length}</td></tr>
+                    <tr><td>Experiments executed</td><td className="num">{done}</td></tr>
+                    <tr><td>Hazard results computed</td><td className="num">0</td></tr>
+                    <tr><td>Catalogue version</td><td className="num">{CATALOGUE_VERSION}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <SatellitePanel event={area ? verifiedEvents(area)[0] : undefined} />
             </div>
           </>
         )}
@@ -508,22 +613,35 @@ export default function Page() {
           <>
             <h2>Risk Map</h2>
             <p className="lede">
-              Configured study areas. Hazard and risk layers are added once the inference pipeline
-              has produced them; no placeholder extents are drawn.
+              Configured study areas across India and Nepal. Hazard and risk layers appear once the
+              inference pipeline has produced them; the layer control lists every layer with the
+              reason it is unavailable rather than hiding it.
             </p>
             <Disclaimer />
-            <RiskMap regions={regions} />
-            {current && (
-              <div className="panel" style={{ marginTop: 16 }}>
-                <div className="panel-title">{current.name}</div>
-                <p className="muted" style={{ marginBottom: 10 }}>{current.selection_rationale}</p>
-                <table><tbody>
-                  <tr><td>Bounding box</td><td className="num">{current.bbox.join(', ')}</td></tr>
-                  <tr><td>Analysis CRS</td><td className="num">{current.utm_epsg}</td></tr>
-                  <tr><td>Area</td><td className="num">{current.area_km2.toLocaleString()} km²</td></tr>
-                  <tr><td>Tiles (512px @ 10 m)</td><td className="num">{current.tile_count}</td></tr>
-                </tbody></table>
-                {current.caveats.length > 0 && (<><h3>Caveats</h3><List items={current.caveats} /></>)}
+            <div style={{ position: 'relative' }}>
+              <CommandMap areas={STUDY_AREAS} selectedId={region} onSelect={setRegion} />
+              <AnalysisPanel area={area} result={null} />
+            </div>
+            {area && (
+              <div className="grid grid-2" style={{ marginTop: 16 }}>
+                <div className="panel">
+                  <div className="panel-title">Why this region is in the study</div>
+                  <p className="muted">{area.selectionRationale}</p>
+                  <table style={{ marginTop: 10 }}>
+                    <tbody>
+                      <tr><td>Role</td><td>{ROLE_LABEL[area.studyRole].label}</td></tr>
+                      <tr><td>Bounding box</td><td className="num">{area.bbox.join(', ')}</td></tr>
+                      <tr><td>Analysis CRS</td><td className="num">{area.utmEpsg}</td></tr>
+                      <tr><td>Area</td><td className="num">{area.areaKm2.toLocaleString()} km²</td></tr>
+                      <tr><td>Tiles (512 px @ 10 m)</td><td className="num">{area.tileCount}</td></tr>
+                      <tr><td>Ground truth</td><td className="muted">
+                        {area.labelSources[0] ?? 'none — transfer target only'}
+                      </td></tr>
+                    </tbody>
+                  </table>
+                  {area.notes && <p className="panel-note">{area.notes}</p>}
+                </div>
+                <SatellitePanel event={verifiedEvents(area)[0]} />
               </div>
             )}
           </>

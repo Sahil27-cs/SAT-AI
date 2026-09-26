@@ -9,6 +9,8 @@ operations belong in the preprocessing layer (Phase 3), not here.
 from __future__ import annotations
 
 import math
+from datetime import date, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +19,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from satai.errors import ValidationError
 
-__all__ = ["AOI", "AOIRegistry", "load_aoi_registry", "utm_epsg_for"]
+__all__ = [
+    "AOI",
+    "AOIRegistry",
+    "HazardEvent",
+    "StudyRole",
+    "load_aoi_registry",
+    "utm_epsg_for",
+]
 
 # India's approximate bounding box, used as a soft sanity check on study areas.
 INDIA_BBOX: tuple[float, float, float, float] = (68.0, 6.0, 97.5, 37.5)
@@ -49,6 +58,67 @@ def utm_epsg_for(lon: float, lat: float) -> str:
     return f"EPSG:{base + zone}"
 
 
+class StudyRole(StrEnum):
+    """Why an AOI is in the study. Surfaced in the interface.
+
+    The distinction is what separates a research instrument from a dashboard: a
+    region held out to measure a transfer gap is doing different work from one
+    the model was fitted on, and reporting them together without saying which is
+    which is how an inflated number gets published.
+    """
+
+    TRAINING = "training"
+    """Model is fitted on chips from this region."""
+
+    TRANSFER_EVALUATION = "transfer_evaluation"
+    """Held out entirely. Measures generalisation to an unseen setting."""
+
+    CANDIDATE = "candidate"
+    """Configured, not yet promoted on measured evidence (ADR-007)."""
+
+
+class HazardEvent(BaseModel):
+    """A specific, dated hazard event with verifiable satellite coverage.
+
+    ``verified`` is the load-bearing field and it is never set from a news
+    report. It means: a named sensor, a specific acquisition, and at least one
+    publicly retrievable reference product have each been checked. An event that
+    is real but whose imagery has not been confirmed stays ``verified: false``
+    and the interface labels it CANDIDATE rather than showing it as analysis.
+
+    Reference products are other organisations' delineations -- UNOSAT, Copernicus
+    EMS. They are **label and validation data**, never SAT-AI outputs, and the
+    serving layer must not present their figures as this system's results.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(pattern=r"^[a-z0-9_]+$")
+    name: str
+    hazard: str
+    occurred_on: date = Field(description="Event onset date (UTC).")
+    sensor: str = Field(description="Instrument behind the reference analysis.")
+    acquisition_utc: datetime | None = Field(
+        default=None, description="Scene acquisition time, where a product states it."
+    )
+    reference_products: list[str] = Field(
+        default_factory=list,
+        description="Public delineations covering this event. Not SAT-AI outputs.",
+    )
+    verified: bool = Field(
+        default=False,
+        description="True only when sensor, date and a retrievable product were checked.",
+    )
+    verification_note: str = Field(
+        min_length=20, description="What was checked, and against what source."
+    )
+
+    @property
+    def display_status(self) -> str:
+        """What the interface is permitted to call this event."""
+        return "HISTORICAL EVENT ANALYSIS" if self.verified else "CANDIDATE — UNVERIFIED"
+
+
 class AOI(BaseModel):
     """A study area.
 
@@ -77,6 +147,14 @@ class AOI(BaseModel):
         "training here is not possible -- only transfer from elsewhere.",
     )
     status: str = Field(default="candidate", description="candidate | selected | rejected")
+    study_role: StudyRole = Field(
+        default=StudyRole.CANDIDATE,
+        description="Training, held-out transfer target, or not yet promoted.",
+    )
+    events: list[HazardEvent] = Field(
+        default_factory=list,
+        description="Dated events with checked satellite coverage over this AOI.",
+    )
     notes: str | None = None
 
     @model_validator(mode="after")
@@ -127,6 +205,24 @@ class AOI(BaseModel):
     def has_labels(self) -> bool:
         """Whether supervised training is possible in this AOI at all."""
         return bool(self.label_sources)
+
+    @property
+    def verified_events(self) -> list[HazardEvent]:
+        """Events whose sensor, date and reference product were actually checked.
+
+        The interface may only offer historical analysis for these. An event in
+        ``events`` with ``verified: false`` is a research lead, not a result.
+        """
+        return [e for e in self.events if e.verified]
+
+    def hazard_coverage(self) -> dict[str, bool]:
+        """Which of this AOI's declared hazards have a verified event behind them.
+
+        Drives the honest empty state: a hazard listed with no verified event
+        renders as "no analysis" with the reason, never as a zero.
+        """
+        covered = {e.hazard for e in self.verified_events}
+        return {hazard: hazard in covered for hazard in self.primary_hazards}
 
 
 class AOIRegistry(BaseModel):

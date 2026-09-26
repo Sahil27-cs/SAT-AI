@@ -170,6 +170,379 @@ ul.tight li { margin: 4px 0; color: var(--fg-dim); font-size: 13.5px; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 .ok { background: var(--obs); } .warn { background: var(--index); } .bad { background: var(--danger); }
 
+/* ===================================================================
+   COMMAND CENTRE
+   ===================================================================
+   The dark geospatial-operations layer. Restraint is the whole point:
+   one accent (cyan) for data and instruments, the risk ramp reserved
+   for risk, and the four source-kind hues used ONLY to encode how a
+   value was produced. Nothing glows for decoration — if something is
+   coloured here it is carrying information.
+   =================================================================== */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  padding: 26px 0 10px;
+  border-bottom: 1px solid var(--line-soft);
+  margin-bottom: 22px;
+}
+.hero-title {
+  font-size: clamp(26px, 3.4vw, 40px);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin: 0;
+}
+.hero-title .accent { color: var(--accent); }
+.hero-sub {
+  color: var(--fg-dim);
+  max-width: 66ch;
+  margin: 10px 0 0;
+  font-size: 15px;
+}
+.hero-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+.hero-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 4px;
+  padding: 4px 9px;
+}
+
+/* ---------- map ---------- */
+
+.cmd-map {
+  position: relative;
+  height: clamp(420px, 60vh, 640px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--panel);
+}
+.cmd-map-canvas { position: absolute; inset: 0; }
+
+/* A blank basemap and a map with no data look identical. This says which. */
+.cmd-tile-warning {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 3;
+  max-width: min(560px, calc(100% - 28px));
+  padding: 8px 12px;
+  border: 1px solid var(--index);
+  border-radius: 6px;
+  background: rgba(11, 15, 20, 0.95);
+  color: var(--fg-dim);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.cmd-layers {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 268px;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  background: rgba(11, 15, 20, 0.93);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  z-index: 2;
+}
+.cmd-layers.collapsed { width: 148px; }
+.cmd-layers-head {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.cmd-chev { color: var(--fg-faint); }
+.cmd-layers-body { padding: 8px 12px 12px; }
+
+.cmd-layer { padding: 7px 0; border-bottom: 1px solid var(--line-soft); }
+.cmd-layer:last-of-type { border-bottom: none; }
+.cmd-layer.disabled .cmd-layer-name { color: var(--fg-faint); }
+.cmd-layer-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.cmd-layer.disabled .cmd-layer-row { cursor: not-allowed; }
+.cmd-layer-name { flex: 1; font-size: 13px; }
+.cmd-layer-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--fg-faint);
+  margin: 3px 0 0 22px;
+}
+.cmd-layer-off { color: var(--index); }
+.cmd-layer-reason {
+  margin: 5px 0 0 22px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg-faint);
+}
+
+/* Source-kind dot: the same four hues the badges use, so a layer's
+   provenance is readable without opening anything. */
+.kind-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.kind-dot.observation { background: var(--obs); }
+.kind-dot.model { background: var(--model); }
+.kind-dot.index { background: var(--index); }
+.kind-dot.derived, .kind-dot.catalogue { background: var(--derived); }
+
+.cmd-legend { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.cmd-legend-title,
+.cmd-legend-row { font-size: 11.5px; color: var(--fg-dim); }
+.cmd-legend-title { font-family: var(--mono); letter-spacing: 0.06em; margin-bottom: 6px; }
+.cmd-legend-row { display: flex; align-items: center; gap: 7px; margin: 4px 0; }
+.cmd-legend-note { font-size: 10.5px; color: var(--fg-faint); margin: 8px 0 0; line-height: 1.45; }
+
+/* ---------- analysis panel ---------- */
+
+.analysis-panel {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 296px;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  background: rgba(11, 15, 20, 0.93);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  padding: 14px;
+  z-index: 2;
+}
+.panel-eyebrow {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+.analysis-region { font-size: 17px; font-weight: 600; margin: 6px 0 2px; line-height: 1.25; }
+.analysis-country {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--fg-dim);
+  margin-bottom: 12px;
+}
+.role-chip {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+}
+.role-chip.training { color: var(--accent); border-color: var(--accent-dim); }
+.role-chip.transfer_evaluation { color: var(--model); border-color: var(--model); }
+.role-chip.candidate { color: var(--fg-faint); }
+
+.readiness {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+}
+.readiness-dot { width: 8px; height: 8px; border-radius: 50%; }
+.readiness.ok { color: var(--obs); }
+.readiness.ok .readiness-dot { background: var(--obs); }
+.readiness.warn { color: var(--index); }
+.readiness.warn .readiness-dot { background: var(--index); }
+.readiness.idle { color: var(--fg-faint); }
+.readiness.idle .readiness-dot { background: var(--fg-faint); }
+
+.analysis-detail { font-size: 12px; color: var(--fg-dim); line-height: 1.5; margin: 9px 0 12px; }
+.analysis-facts { margin: 0; display: grid; gap: 7px; }
+.analysis-facts > div { display: flex; justify-content: space-between; gap: 10px; }
+.analysis-facts dt { font-size: 11.5px; color: var(--fg-faint); }
+.analysis-facts dd { margin: 0; font-size: 11.5px; text-align: right; }
+.analysis-foot {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 11px;
+  color: var(--fg-faint);
+  line-height: 1.5;
+}
+
+/* ---------- pipeline strip ---------- */
+
+.pipeline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+.pipeline-item { position: relative; }
+.pipeline-node {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: var(--panel);
+}
+.pipeline-node.ok { border-left-color: var(--obs); }
+.pipeline-node.partial { border-left-color: var(--index); }
+.pipeline-node.blocked { border-left-color: var(--fg-faint); }
+.pipeline-name { font-size: 13px; font-weight: 550; }
+.pipeline-state {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+.pipeline-node.ok .pipeline-state { color: var(--obs); }
+.pipeline-node.partial .pipeline-state { color: var(--index); }
+.pipeline-detail {
+  font-size: 11px;
+  color: var(--fg-faint);
+  line-height: 1.45;
+  margin: 6px 2px 0;
+}
+
+/* ---------- panels ---------- */
+
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.model-name { font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+.kv { margin: 0; display: grid; gap: 7px; }
+.kv > div { display: flex; justify-content: space-between; gap: 12px; }
+.kv dt { font-size: 12px; color: var(--fg-faint); flex-shrink: 0; }
+.kv dd { margin: 0; font-size: 12px; text-align: right; }
+.panel-note { font-size: 11.5px; color: var(--fg-faint); line-height: 1.5; margin: 10px 0 0; }
+
+.status-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.status-pill.ready { color: var(--obs); border-color: var(--obs); }
+.status-pill.not-trained { color: var(--index); border-color: var(--index); }
+.status-pill.blocked { color: var(--danger); border-color: var(--danger); }
+.status-pill.no-data { color: var(--fg-faint); }
+
+.metrics { width: 100%; margin-top: 10px; font-size: 12px; }
+.metrics td { padding: 4px 0; border-bottom: 1px solid var(--line-soft); }
+.metrics td.num { text-align: right; font-family: var(--mono); }
+.blocker {
+  margin: 12px 0 0;
+  padding: 9px 10px;
+  border-left: 2px solid var(--index);
+  background: var(--panel-2);
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  line-height: 1.5;
+}
+.refs { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.refs-title { font-size: 10.5px; color: var(--fg-faint); font-family: var(--mono); line-height: 1.45; }
+
+/* ---------- honest empty state ---------- */
+
+.data-status {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 18px;
+}
+.data-status-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.data-status-reason { font-size: 13.5px; color: var(--fg-dim); line-height: 1.6; margin: 0 0 14px; max-width: 70ch; }
+.data-status-what, .data-status-event {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  margin-bottom: 10px;
+}
+.data-status-what p, .data-status-event p { margin: 5px 0 0; font-size: 12.5px; color: var(--fg-dim); line-height: 1.55; }
+button.ghost {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--fg-dim);
+  border-radius: 6px;
+  padding: 7px 13px;
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+button.ghost:hover { border-color: var(--accent-dim); color: var(--fg); }
+
+/* ---------- region selector ---------- */
+
+.region-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+.region-card {
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--fg);
+  display: grid;
+  gap: 6px;
+}
+.region-card:hover { border-color: var(--accent-dim); }
+.region-card.active { border-color: var(--accent); background: var(--panel-2); }
+.region-card-top { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
+.region-card-name { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
+.region-card-country { font-size: 11.5px; color: var(--fg-faint); }
+.region-card-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+.region-card-haz {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  color: var(--fg-dim);
+}
+.region-card-event { font-size: 10.5px; color: var(--obs); font-family: var(--mono); }
+
+@media (max-width: 1100px) {
+  .analysis-panel { position: static; width: auto; max-height: none; margin-bottom: 10px; backdrop-filter: none; }
+  .cmd-map { height: 420px; }
+}
+
 /* Visible to assistive technology, not to sighted users. Used for the labels
    on controls whose purpose is otherwise carried only by a placeholder — which
    vanishes on focus, exactly when a screen-reader user needs it. */

@@ -1,23 +1,42 @@
 # ===========================================================================
 # SAT-AI study areas
 #
-# STATUS IS "candidate" FOR EVERY ENTRY ON PURPOSE.
+# STATUS IS "candidate" FOR MOST ENTRIES ON PURPOSE.
 #
 # Phase 2 selects the operational AOI on measured evidence -- Sentinel-1 scene
 # counts over the window, label coverage, cloud statistics, hazard recurrence --
-# not on familiarity or convenience. `scripts/` in Phase 2 will query the
-# catalogues, print the comparison table, and only then will an entry here be
+# not on familiarity or convenience. `scripts/` in Phase 2 queries the
+# catalogues, prints the comparison table, and only then is an entry here
 # promoted to status: selected.
 #
-# Selection criteria, in weight order (docs/adr/ADR-007 will record the result):
+# Selection criteria, in weight order (ADR-007 records the result):
 #   1. Labelled ground truth exists        <- dominant; without it there is no
 #                                             supervised model, only transfer
 #   2. Sentinel-1 acquisition density
 #   3. Hazard recurrence
 #   4. Exposure / societal relevance
 #   5. Tile count within compute budget
+#
+# ---------------------------------------------------------------------------
+# ON `events` AND `verified`
+#
+# An entry under `events` is a dated hazard event with satellite coverage. The
+# `verified` flag means three things were actually checked, not read about:
+# the sensor, the acquisition date, and at least one publicly retrievable
+# reference product. Only a verified event may be offered in the interface as
+# historical analysis; everything else renders as CANDIDATE.
+#
+# `reference_products` are OTHER ORGANISATIONS' delineations -- UNOSAT,
+# Copernicus EMS. They are label and validation data. The serving layer must
+# never present their figures as SAT-AI model output, and the numbers they
+# report are deliberately NOT copied into this file: a figure sitting in a
+# config is one refactor away from being rendered as a result.
+#
+# Checked on 2026-09-26. An activation code that could not be confirmed is
+# absent rather than guessed -- see the Kerala note, where the code commonly
+# cited in secondary sources turned out to belong to a different event.
 # ===========================================================================
-version: "0.1.0"
+version: "0.2.0"
 
 aois:
   - id: bihar_ganga
@@ -28,6 +47,7 @@ aois:
     bbox: [85.0, 25.2, 86.5, 26.2]
     primary_hazards: [flood]
     status: candidate
+    study_role: training
     label_sources:
       - "Sen1Floods11 (contains an India event; exact site to be VERIFIED at ingestion, Phase 2)"
       - "Copernicus EMS rapid mapping activations (per-event)"
@@ -52,6 +72,7 @@ aois:
     bbox: [72.75, 18.85, 73.20, 19.35]
     primary_hazards: [flood, cyclone]
     status: candidate
+    study_role: transfer_evaluation
     label_sources:
       - "Copernicus EMS activations (event-dependent)"
       - "None dense enough for supervised training -- transfer target only"
@@ -62,7 +83,8 @@ aois:
       instead of lowering it, inverting the physical signal the model relies on.
       Applying a model trained on rural Bihar to Mumbai and quantifying the drop
       is a reportable domain-transfer result, not a failure. Annual monsoon
-      flooding, very high exposure, and cyclone-adjacent coastline.
+      flooding, very high exposure, and cyclone-adjacent coastline. This is the
+      evaluation target for contribution C3.
     notes: >
       Expect poor IoU here relative to rural AOIs. That is the finding, and it
       must be reported rather than tuned away.
@@ -73,6 +95,7 @@ aois:
     bbox: [91.0, 26.0, 93.0, 26.9]
     primary_hazards: [flood]
     status: candidate
+    study_role: candidate
     label_sources:
       - "Copernicus EMS activations"
       - "UNOSAT flood extents (event-dependent)"
@@ -88,15 +111,170 @@ aois:
     bbox: [76.2, 9.9, 76.9, 10.5]
     primary_hazards: [flood]
     status: candidate
+    study_role: transfer_evaluation
     label_sources:
-      - "Copernicus EMS activations for the August 2018 Kerala floods"
+      - "Copernicus EMS activations for the August 2018 Kerala floods (activation code NOT yet confirmed)"
     selection_rationale: >
       Well-documented, internationally mapped 2018 flood event with independent
       reference delineations. Steep terrain makes it the hardest SAR case of the
-      four (layover, shadow, slope-driven false negatives), which makes it a
-      useful adversarial test rather than a training region.
+      Indian AOIs -- layover, shadow and slope-driven false negatives -- which
+      makes it a useful adversarial test rather than a training region.
+    notes: >
+      NO VERIFIED EVENT ENTRY. The August 2018 Kerala flood is real and heavily
+      studied, but the Copernicus EMS activation code widely cited for it in
+      secondary sources (EMSR298) belongs to forest fires in central Sweden,
+      July 2018. Rather than record a code that does not check out, this AOI
+      carries no `events` entry until the correct activation is confirmed
+      against the EMS activation list directly. The peer-reviewed SAR
+      inundation studies of this event remain usable as reference literature.
 
   # ---------------------------------------------------------------------
-  # Wildfire and cyclone AOIs are added in Phases 16-17 and 20. Adding them
-  # now would imply a scope commitment the project has not yet earned.
+  # Nepal -- cross-border geographic transfer, with a verified event.
   # ---------------------------------------------------------------------
+  - id: nepal_koshi_terai
+    name: "Koshi and Madhesh Terai, Nepal"
+    country: Nepal
+    # Koshi river floodplain across the eastern Terai belt: Saptari, Sunsari
+    # and adjoining Madhesh districts. Sized to the lowland plain rather than
+    # the whole province, so the terrain regime stays comparable to Bihar.
+    bbox: [86.3, 26.3, 87.5, 27.0]
+    primary_hazards: [flood]
+    status: candidate
+    study_role: transfer_evaluation
+    label_sources:
+      - "UNOSAT satellite-detected water extent products, Sentinel-1, September-October 2024"
+    selection_rationale: >
+      A cross-border transfer target that holds the physiography fixed while
+      changing the country. The Koshi Terai is the same Ganga-system alluvial
+      plain as the Bihar AOI -- the Koshi crosses directly from here into Bihar --
+      so a model trained in Bihar and evaluated here is tested on a genuinely
+      unseen region without confounding the result with a change of terrain
+      regime. That isolates geographic and label-provenance transfer from the
+      terrain and urban effects that Kerala and Mumbai probe. It also has
+      independent delineations produced by a different organisation using a
+      different method, which is a stronger check than re-using the training
+      dataset's own labels.
+    events:
+      - id: nepal_floods_2024_09
+        name: "Nepal floods, late September 2024"
+        hazard: flood
+        occurred_on: 2024-09-27
+        sensor: "Sentinel-1 (C-band SAR)"
+        # UNOSAT states the scene was acquired 27 Sep 2024 at 05:56 local time.
+        # Nepal Standard Time is UTC+05:45, so 05:56 NPT = 00:11 UTC.
+        acquisition_utc: 2024-09-27T00:11:00Z
+        reference_products:
+          - "https://reliefweb.int/map/nepal/satellite-detected-water-extent-koshi-and-madhesh-provinces-nepal-27-september-2024-imagery-analysis-27092024-published-28092024-v1"
+          - "https://un.org.np/unosat-s-1-flood-ai-monitoring-dashboard-nepal"
+          - "https://global-flood.emergency.copernicus.eu/news/181-floods-and-landslides-in-nepal-late-september-2024/"
+        verified: true
+        verification_note: >
+          Checked 2026-09-26. Rainfall between 27 and 28 September 2024 was the
+          heaviest recorded since Nepal's modern hydrological monitoring began in
+          1970, with nine Kathmandu Valley stations at unprecedented levels.
+          UNOSAT published a satellite-detected water extent product for Koshi
+          and Madhesh Provinces from a Sentinel-1 acquisition on 27 September
+          2024, distributed via ReliefWeb, and maintains a Sentinel-1 flood
+          monitoring dashboard for Nepal. Copernicus GloFAS carries an
+          independent account of the same event. Sensor, acquisition date and
+          retrievable products all confirmed. UNOSAT's own reported areas and
+          exposure counts are deliberately not copied into this file -- they are
+          reference values for validation, not SAT-AI outputs, and a figure
+          stored here is one refactor away from being rendered as a result.
+          UNOSAT additionally cautions that SAR-derived extent underestimates
+          standing water under dense vegetation and in built-up areas, which
+          applies to any comparison made against these products.
+    notes: >
+      A second, much more recent Nepal activation exists (Copernicus EMS
+      "Flood in Nepal", northern Nepal, around Syapru Besi) covering building
+      damage. It is not recorded as an event here because its imagery and
+      products have not been checked to the same standard. Add it only after
+      the same three checks pass.
+
+  # ---------------------------------------------------------------------
+  # Odisha -- cyclone exposure, with a verified event.
+  # ---------------------------------------------------------------------
+  - id: odisha_mahanadi
+    name: "Mahanadi delta and Odisha coast"
+    country: India
+    bbox: [85.4, 19.6, 86.9, 20.6]
+    primary_hazards: [cyclone, flood]
+    status: candidate
+    study_role: transfer_evaluation
+    label_sources:
+      - "Copernicus EMS EMSR357 delineation products, Odisha Coast, May 2019"
+      - "IBTrACS v4 best tracks (NOAA NCEI)"
+    selection_rationale: >
+      The only AOI in the study whose dominant hazard is cyclonic rather than
+      fluvial, and the one that exercises the exposure-along-a-track path of the
+      risk engine rather than its flood path. The Odisha coast takes the most
+      intense landfalls on the Indian east coast and has an unusually complete
+      public record: best-track data from IBTrACS, and independent post-landfall
+      delineations from a European rapid-mapping activation. It is a transfer
+      target, not a training region -- SAT-AI does not forecast cyclone tracks
+      and this AOI is not an attempt to start.
+    events:
+      - id: cyclone_fani_2019_05
+        name: "Tropical Cyclone Fani landfall, Odisha"
+        hazard: cyclone
+        occurred_on: 2019-05-03
+        # NOT Sentinel-1. The EMS delineations for this activation were produced
+        # from commercial X-band radar, and recording the actual sensor matters:
+        # X-band and C-band have different penetration and different failure
+        # modes over vegetation, so a comparison against these products is not
+        # a like-for-like comparison with a Sentinel-1 model.
+        sensor: "TerraSAR-X and COSMO-SkyMed (X-band SAR)"
+        reference_products:
+          - "https://mapping.emergency.copernicus.eu/activations/EMSR357/"
+          - "https://www.copernicus.eu/en/news/news/copernicus-ems-monitors-impact-cyclone-fani-eastern-india"
+        verified: true
+        verification_note: >
+          Checked 2026-09-26. Copernicus EMS activation EMSR357, "Tropical
+          Cyclone Fani in Eastern India". Fani made landfall on 3 May 2019
+          between Brahmagiri village and Puri, Odisha, as a Category 4 system
+          with maximum sustained winds around 240 km/h -- the most intense
+          tropical cyclone to make landfall in India in the preceding twenty
+          years. Delineation products for the Odisha Coast area of interest were
+          produced from TerraSAR-X and COSMO-SkyMed imagery acquired on 4 and 5
+          May 2019. Activation code, landfall date, location and sensors all
+          confirmed against the EMS activation page and the Copernicus
+          newsroom. The flooded-area figure published in the overview map is a
+          Copernicus EMS result and is deliberately not stored here.
+    notes: >
+      Cyclone scope for this AOI is exposure and extreme-weather indices over an
+      observed or supplied track. Track forecasting requires assimilated
+      observations and numerical weather prediction, which IMD operates and
+      SAT-AI does not.
+
+  # ---------------------------------------------------------------------
+  # Wildfire -- configured, no verified event yet.
+  # ---------------------------------------------------------------------
+  - id: uttarakhand_kumaon
+    name: "Kumaon hills, Uttarakhand"
+    country: India
+    bbox: [79.0, 29.2, 80.2, 30.1]
+    primary_hazards: [wildfire]
+    status: candidate
+    study_role: candidate
+    label_sources: []
+    selection_rationale: >
+      The wildfire AOI. Chir pine forest across the Kumaon hills burns nearly
+      every pre-monsoon season, and NASA FIRMS provides continuous VIIRS and
+      MODIS active-fire detections over it, which is the one hazard stream in
+      this project that is a direct instrument observation rather than a model
+      output. That makes it the cleanest place to demonstrate the
+      observation-versus-model distinction the provenance contract is built
+      around: a thermal anomaly is a measurement at overpass time, a fire-danger
+      index is not.
+    events: []
+    notes: >
+      NO VERIFIED EVENT. Uttarakhand's recurrent forest fires are well
+      documented, but no specific burn has yet been checked to the standard the
+      `events` block requires -- a named sensor, a confirmed acquisition and a
+      retrievable product. FIRMS detections must be queried for an actual date
+      window and bounding box before an event is recorded here. Until then this
+      AOI supports fire-danger indices and FIRMS ingestion, and the interface
+      shows no burned-area analysis for it.
+      `label_sources` is empty on purpose: there is no burn-severity ground
+      truth here, so any dNBR product over this AOI is unvalidated and must be
+      labelled as such.
