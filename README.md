@@ -3,11 +3,7 @@
 **An AI-driven multi-hazard risk assessment and early-warning research prototype
 using satellite remote sensing and intelligent conversational agents.**
 
-<!-- CI badge: add once this repository has a GitHub remote. The workflow is in
-     .github/workflows/ci.yml and runs lint, mypy, pytest, the frontend
-     type-check and build, and gitleaks over the full history. The badge that
-     used to sit here pointed at a literal `USERNAME` placeholder, which is a
-     broken link claiming a passing build. -->
+[![CI](https://github.com/Sahil27-cs/SAT-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/Sahil27-cs/SAT-AI/actions/workflows/ci.yml)
 
 **Live:** [sat-ai-murex.vercel.app](https://sat-ai-murex.vercel.app) ·
 [API](https://sat-ai-api-chiragpednekar3-8808s-projects.vercel.app/docs) ·
