@@ -39,6 +39,7 @@ import os
 import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 
 try:
     from satai.paths import REPO_ROOT, relative_to_repo
@@ -98,6 +99,47 @@ TARGETS_CHECKED: tuple[dict[str, str], ...] = (
         ),
     },
 )
+
+
+def _rural_comparison() -> dict[str, Any]:
+    """The same gate against a rural target, for scale.
+
+    Without this the urban shift is a number with nothing to compare it to, and
+    a reader would naturally attribute all of it to the city. The Nepal run is a
+    rural floodplain measured against the same training chips through the same
+    gate, and it differs from them by a *similar* amount -- which says the
+    sigma0-to-gamma0 product difference dominates, and that the urban component
+    is not separable here.
+    """
+    path = (
+        REPO_ROOT
+        / "data"
+        / "processed"
+        / "flood_scenes"
+        / "nepal_koshi_terai_20240927T001212_metadata.json"
+    )
+    if not path.is_file():
+        return {"available": False, "reason": "no rural-target gate result on disk"}
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    gate = payload.get("distribution_gate", {})
+    return {
+        "available": True,
+        "rural_target": payload.get("aoi"),
+        "rural_target_scene": payload.get("scene_id"),
+        "rural_verdict": gate.get("verdict"),
+        "rural_band_shifts": {
+            band["band"]: band.get("mean_shift") for band in gate.get("bands", [])
+        },
+        "interpretation": (
+            "Both targets are gamma0 RTC measured against sigma0 training chips, "
+            "and both carry a mean shift of roughly +2 dB on the absolute bands. "
+            "The rural target's shift is not smaller than the urban one, so the "
+            "measurement below is dominated by the radiometric product "
+            "difference rather than by land cover. Isolating the urban component "
+            "would need a target in the same radiometry as the training data."
+        ),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -225,6 +267,10 @@ def main(argv: list[str] | None = None) -> int:
                 "rasterised to the chip grid and validated as a label set."
             ),
         },
+        # Computed rather than asserted, and it is the most useful thing in this
+        # report: the same gate over a *rural* target carries a comparable
+        # offset, which bounds how much of the shift below can be about cities.
+        "cross_reference_rural_target": _rural_comparison(),
         "caveats": [
             "The shift measured here mixes two things: the rural-to-urban "
             "difference C3 is about, and the sigma0-to-gamma0 radiometric "

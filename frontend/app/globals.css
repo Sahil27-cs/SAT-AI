@@ -675,3 +675,13 @@ button.ghost:hover { border-color: var(--accent-dim); color: var(--fg); }
     border-bottom: 1px solid var(--line); }
   .main { padding: 22px 16px 60px; }
 }
+
+/* Arm table inside an experiment card. Numeric columns are tabular so the
+   four IoU values line up — they differ in the third decimal, and a
+   proportional font hides exactly the digits that carry the result. */
+.arm-table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 12.5px; }
+.arm-table th, .arm-table td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; }
+.arm-table th { color: var(--muted); font-weight: 500; }
+.arm-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.contrib-finding { margin-top: 10px; font-size: 13px; line-height: 1.6; }

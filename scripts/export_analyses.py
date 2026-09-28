@@ -67,6 +67,13 @@ BLOCKED = "BLOCKED"
 #: disk and is described rather than served.
 MAX_FEATURES = 500
 
+#: Why an analysis is not drawn. These are genuinely different facts and one
+#: boolean was hiding that: a result that failed validation must never read as
+#: complete, while a result that is simply too large to ship over a serverless
+#: function is complete and merely undeliverable.
+VALIDATION_FAILED = "validation_failed"
+TOO_LARGE_TO_SERVE = "too_large_to_serve"
+
 
 def _load(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
@@ -103,6 +110,7 @@ def flood_scene_entries() -> list[dict[str, Any]]:
                 # artifacts exist; displaying them as a flood map would present
                 # a result the project's own instrument rejected.
                 "displayable": passed,
+                "withheld_because": None if passed else VALIDATION_FAILED,
                 "withheld_reason": None
                 if passed
                 else (
@@ -180,6 +188,56 @@ def cyclone_entries() -> list[dict[str, Any]]:
                 "risk": meta.get("risk"),
                 "population": meta.get("population"),
                 "geometry": meta.get("track_geojson"),
+                "artifacts_on_disk": meta.get("artifacts"),
+                "artifacts_served": False,
+                "caveats": meta.get("caveats", []),
+            }
+        )
+    return entries
+
+
+def damage_entries() -> list[dict[str, Any]]:
+    """Post-event change detection, one entry per pre/post pair."""
+    entries: list[dict[str, Any]] = []
+    for path in sorted((PROCESSED / "damage").glob("*_metadata.json")):
+        meta = _load(path)
+        if meta is None:
+            continue
+        pair, result = meta.get("pair", {}), meta.get("result", {})
+        entries.append(
+            {
+                "aoi": meta["aoi"],
+                "hazard": "damage",
+                "kind": "historical_analysis",
+                "status": ANALYSIS_COMPLETE,
+                "source_kind": "derived",
+                "headline": (
+                    f"{result['changed_fraction']:.1%} of observed pixels changed "
+                    f"between {pair['pre_acquired_at'][:10]} and "
+                    f"{pair['post_acquired_at'][:10]}"
+                ),
+                # The change field is a full raster; the summary is what travels.
+                "displayable": False,
+                "withheld_because": TOO_LARGE_TO_SERVE,
+                "withheld_reason": (
+                    "The change field is a full-resolution raster and is not "
+                    "served. Its summary and provenance are. This analysis "
+                    "passed; it is undeliverable, not unvalidated."
+                ),
+                "not_a_prediction": meta.get("not_a_prediction"),
+                "observation": {
+                    "scene_id": pair.get("post_scene_id"),
+                    "acquired_at": pair.get("post_acquired_at"),
+                    "provider": pair.get("provider"),
+                    "radiometry": pair.get("radiometry"),
+                    "pre_scene_id": pair.get("pre_scene_id"),
+                    "pre_acquired_at": pair.get("pre_acquired_at"),
+                    "relative_orbit": pair.get("relative_orbit"),
+                    "separation_days": pair.get("separation_days"),
+                    "same_relative_orbit": pair.get("same_relative_orbit"),
+                },
+                "method": meta.get("method"),
+                "result": result,
                 "artifacts_on_disk": meta.get("artifacts"),
                 "artifacts_served": False,
                 "caveats": meta.get("caveats", []),
@@ -419,11 +477,12 @@ def main() -> int:
     registry = load_aoi_registry(REPO_ROOT / "configs" / "aoi.yaml")
     flood = flood_scene_entries()
     cyclone = cyclone_entries()
+    damage = damage_entries()
     wildfire = wildfire_entry()
     xai = xai_entries()
 
     by_area: dict[str, list[dict[str, Any]]] = {}
-    for entry in [*flood, *cyclone]:
+    for entry in [*flood, *cyclone, *damage]:
         by_area.setdefault(entry["aoi"], []).append(entry)
     if wildfire:
         for area in wildfire["per_area"]:

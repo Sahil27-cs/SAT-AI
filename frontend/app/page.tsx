@@ -32,7 +32,8 @@ import {
   AnalysisPanel, DataStatus, ModelStatus, PipelineStrip, SatellitePanel, pipelineFor,
 } from '@/components/Panels';
 import { AnalysesPanel, ExplainabilityPanel } from '@/components/AnalysesPanel';
-import { ANALYSED_AREAS } from '@/lib/analyses';
+import type { RegisteredExperiment } from '@/lib/analyses';
+import { ANALYSED_AREAS, EXPERIMENTS_REGISTER, executedExperiments } from '@/lib/analyses';
 
 const SECTIONS = [
   { group: 'Monitoring', items: [['overview','Overview'],['map','Risk Map'],['flood','Flood'],
@@ -421,55 +422,114 @@ function Assistant({
  * and a named blocker reads as a research register. Only C4 carries numbers,
  * because C4 is the only one that has run.
  */
-const CONTRIB_DETAIL: {
-  id: string; what: string; state: 'ready' | 'blocked' | 'not-trained';
-  label: string; dataset: string; instrument: string; metric: string; result: string;
-}[] = [
-  {
-    id: 'C1',
-    what: 'Measured grounding of an agent layer over Earth-observation outputs',
-    state: 'blocked',
-    label: 'INSTRUMENT READY · NOT RUN',
-    dataset: 'Versioned 28-question benchmark; ~1/3 must be refused',
-    instrument: 'Grounding validator — 4 checks, scored at 100% over 15 labelled cases in experiment 9a; Gemini native function calling',
-    metric: 'Grounding-violation rate, tool-invocation accuracy, refusal correctness, latency',
-    result:
-      'Not executed. Needs GEMINI_API_KEY on the deployment. The validator, the 28-question benchmark, the Gemini tool-calling loop and the chat_turns audit log that would hold the results all exist; the deployed validator is parity-tested against the scored one.',
-  },
-  {
-    id: 'C2',
-    what: 'Quantified degradation under modality loss',
-    state: 'blocked',
-    label: 'PARTIALLY EXECUTED',
-    dataset: 'Sen1Floods11 — two arms trained, three blocked on ancillary rasters',
-    instrument: 'Modality ablation; seed, schedule, fold and selection region held fixed',
-    metric: 'IoU, F1, precision, recall per band stack, on held-out India',
-    result:
-      'Executed for SAR vs SAR+ratio, and the result is negative: removing the VV/VH ratio costs 0.0019 IoU (0.5211 vs 0.5230), far below the spread between regions. The ratio carries nothing the network cannot derive from VV and VH separately. Precision/recall moves more than IoU does — SAR-only is more precise and less sensitive, which matters where a missed inundation and a false one cost differently. Rainfall and DEM arms need co-registered rasters Sen1Floods11 does not ship.',
-  },
-  {
-    id: 'C3',
-    what: 'Quantified rural → urban domain-transfer gap for SAR flood segmentation',
-    state: 'not-trained',
-    label: 'NOT EXECUTED',
-    dataset: 'Train on rural Ganga plain; evaluate on Mumbai MMR',
-    instrument: 'Region-disjoint evaluation (ADR-009)',
-    metric: 'IoU gap between source and urban target, with a confidence interval',
-    result:
-      'Not executed. The model exists and the protocol is implemented, but the target does not: Sen1Floods11 contains no urban Indian flood imagery, and no labelled Mumbai event has been acquired. Running it would need a Copernicus EMS or UNOSAT delineation over an urban Indian flood, co-registered to Sentinel-1.',
-  },
-  {
-    id: 'C4',
-    what: 'Reproducible, sensitivity-analysed multi-hazard risk implementation',
-    state: 'ready',
-    label: 'EXECUTED',
-    dataset: 'Synthetic hazard/exposure/vulnerability fields over the exponent grid',
-    instrument: 'Risk engine + exponent sweep',
-    metric: 'Spearman rho of the ranking; share of cells changing colour band',
-    result:
-      'Executed. The exponents barely change which places rank riskiest — Spearman rho never falls below 0.957 — but move up to 18.7% of cells between colour bands. So a ranking may be reported with confidence and a cell’s band may not, a distinction that exists only because the analysis was run.',
-  },
-];
+/**
+ * Presentation for a derived experiment state.
+ *
+ * The states come from `analyses.generated.json`, which is built by scanning
+ * report files. This map only decides how each one looks; it deliberately has
+ * no opinion about which state an experiment is in, because the previous
+ * hand-written version of this table went stale three separate times in one
+ * working session.
+ */
+function experimentTone(status: string): 'ready' | 'blocked' | 'not-trained' {
+  if (status.includes('BLOCKED') && !status.includes('MEASURED')) return 'not-trained';
+  if (status.startsWith('EXECUTED')) return 'ready';
+  return 'blocked';
+}
+
+function ExperimentCard({ experiment }: { experiment: RegisteredExperiment }) {
+  const tone = experimentTone(experiment.status);
+  const blocker =
+    typeof experiment.blocker === 'string'
+      ? experiment.blocker
+      : (experiment.blocker?.missing ?? null);
+
+  return (
+    <div className={`contrib ${tone}`}>
+      <div className="contrib-head">
+        <code>{experiment.id}</code>
+        <span className={`status-pill ${tone}`}>{experiment.status}</span>
+      </div>
+      <div className="contrib-what">{experiment.title}</div>
+
+      {experiment.hypothesis && (
+        <p className="muted" style={{ marginTop: 8 }}>
+          {experiment.hypothesis}
+        </p>
+      )}
+
+      {experiment.arms_executed && experiment.arms_executed.length > 0 && (
+        <table className="arm-table">
+          <thead>
+            <tr>
+              <th>arm</th>
+              <th className="num">bands</th>
+              <th className="num">IoU</th>
+              <th className="num">F1</th>
+              <th className="num">prec</th>
+              <th className="num">recall</th>
+            </tr>
+          </thead>
+          <tbody>
+            {experiment.arms_executed.map((arm) => (
+              <tr key={arm.arm}>
+                <td>
+                  <code>{arm.arm}</code>
+                </td>
+                <td className="num">{arm.bands}</td>
+                <td className="num">{arm.iou.toFixed(4)}</td>
+                <td className="num">{arm.f1.toFixed(4)}</td>
+                <td className="num">{arm.precision.toFixed(4)}</td>
+                <td className="num">{arm.recall.toFixed(4)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {typeof experiment.loro_iou === 'number' && (
+        <dl className="kv" style={{ marginTop: 8 }}>
+          <dt>Region-disjoint (LORO)</dt>
+          <dd>{experiment.loro_iou.toFixed(4)} IoU</dd>
+          {typeof experiment.official_iou === 'number' && (
+            <>
+              <dt>Official chip-level split</dt>
+              <dd>{experiment.official_iou.toFixed(4)} IoU</dd>
+              <dt>Gap</dt>
+              <dd>
+                {experiment.gap_iou !== undefined && experiment.gap_iou > 0 ? '+' : ''}
+                {experiment.gap_iou?.toFixed(4)} IoU
+              </dd>
+            </>
+          )}
+        </dl>
+      )}
+
+      {experiment.finding && <p className="contrib-finding">{experiment.finding}</p>}
+
+      {experiment.what_this_is_not && (
+        <p className="analysis-warning">{experiment.what_this_is_not}</p>
+      )}
+
+      {blocker && (
+        <p className="muted" style={{ marginTop: 8 }}>
+          <strong>Blocked on: </strong>
+          {blocker}
+        </p>
+      )}
+
+      {experiment.arms_blocked && Object.keys(experiment.arms_blocked).length > 0 && (
+        <ul className="analysis-bands" style={{ marginTop: 8 }}>
+          {Object.entries(experiment.arms_blocked).map(([arm, why]) => (
+            <li key={arm}>
+              <code>{arm}</code> — {why}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 function Research({ experiments }: { experiments: Experiment[] }) {
   const complete = experiments.filter((e) => e.status === 'complete');
@@ -490,20 +550,8 @@ function Research({ experiments }: { experiments: Experiment[] }) {
       <div className="panel">
         <div className="panel-title">Contributions C1–C4</div>
         <div className="contrib-grid">
-          {CONTRIB_DETAIL.map((c) => (
-            <div key={c.id} className={`contrib ${c.state}`}>
-              <div className="contrib-head">
-                <code>{c.id}</code>
-                <span className={`status-pill ${c.state}`}>{c.label}</span>
-              </div>
-              <div className="contrib-what">{c.what}</div>
-              <dl className="kv" style={{ marginTop: 8 }}>
-                <div><dt>Dataset</dt><dd>{c.dataset}</dd></div>
-                <div><dt>Instrument</dt><dd>{c.instrument}</dd></div>
-                <div><dt>Metric</dt><dd>{c.metric}</dd></div>
-              </dl>
-              <p className="contrib-result">{c.result}</p>
-            </div>
+          {EXPERIMENTS_REGISTER.map((experiment) => (
+            <ExperimentCard key={experiment.id} experiment={experiment} />
           ))}
         </div>
       </div>
@@ -708,8 +756,8 @@ export default function Page() {
                     <tr><td>Verified historical events</td><td className="num">
                       {areasWithVerifiedEvents().reduce((n, a) => n + verifiedEvents(a).length, 0)}
                     </td></tr>
-                    <tr><td>Experiments registered</td><td className="num">{experiments.length}</td></tr>
-                    <tr><td>Experiments executed</td><td className="num">{done}</td></tr>
+                    <tr><td>Experiments registered</td><td className="num">{EXPERIMENTS_REGISTER.length}</td></tr>
+                    <tr><td>Experiments executed</td><td className="num">{executedExperiments().length}</td></tr>
                     <tr><td>Analyses produced</td><td className="num">{producedCount}</td></tr>
                     <tr><td>Catalogue version</td><td className="num">{CATALOGUE_VERSION}</td></tr>
                   </tbody>

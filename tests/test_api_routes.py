@@ -507,12 +507,32 @@ def test_an_unvalidated_analysis_is_recorded_but_not_displayable(client: Any) ->
     """
     body = client.get("/api/v1/analyses").json()
     analyses = [a for area in body["study_areas"] for a in area["analyses"]]
-    unvalidated = [a for a in analyses if a.get("displayable") is False]
+    withheld = [a for a in analyses if a.get("displayable") is False]
 
-    for analysis in unvalidated:
-        assert analysis["status"] != "ANALYSIS COMPLETE"
+    for analysis in withheld:
+        # Every withheld analysis names which of the two reasons applies, and
+        # says so in prose. One boolean for both was hiding the difference.
+        assert analysis["withheld_because"] in {"validation_failed", "too_large_to_serve"}
         assert analysis["withheld_reason"]
         assert "geometry" not in analysis or not analysis.get("geometry")
+
+        if analysis["withheld_because"] == "validation_failed":
+            assert analysis["status"] != "ANALYSIS COMPLETE"
+
+
+def test_being_too_large_to_serve_is_not_a_failed_validation(client: Any) -> None:
+    """A complete analysis whose raster cannot be shipped is still complete.
+
+    Conflating "we could not send it" with "it did not pass" would understate
+    finished work in exactly the way the rest of this project overstates nothing.
+    """
+    body = client.get("/api/v1/analyses").json()
+    analyses = [a for area in body["study_areas"] for a in area["analyses"]]
+    undeliverable = [a for a in analyses if a.get("withheld_because") == "too_large_to_serve"]
+
+    for analysis in undeliverable:
+        assert analysis["status"] == "ANALYSIS COMPLETE"
+        assert "not unvalidated" in analysis["withheld_reason"]
 
 
 def test_every_model_analysis_carries_its_provenance(client: Any) -> None:

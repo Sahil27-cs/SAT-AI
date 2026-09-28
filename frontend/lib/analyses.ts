@@ -43,8 +43,10 @@ export interface Analysis {
   status: AnalysisStatus;
   source_kind: SourceKind;
   headline?: string;
-  /** False when the artifacts exist but did not pass validation. */
+  /** False when the geometry is not drawn, for either reason below. */
   displayable?: boolean;
+  /** Which reason: a failed validation, or a raster too large to ship. */
+  withheld_because?: 'validation_failed' | 'too_large_to_serve' | null;
   withheld_reason?: string | null;
   not_a_prediction?: string;
   observation?: Record<string, unknown>;
@@ -90,6 +92,49 @@ export interface AnalysedArea {
   analyses: Analysis[];
 }
 
+export interface ExperimentArm {
+  arm: string;
+  bands: number;
+  iou: number;
+  f1: number;
+  precision: number;
+  recall: number;
+}
+
+/**
+ * One contribution, as the artifacts on disk describe it.
+ *
+ * Derived rather than declared. The dashboard previously carried a hand-written
+ * table of C1-C4 that went stale three times over in a single working session:
+ * it told readers C1 needed an API key after the key was set and the loop was
+ * answering, that C2 had two arms after four had been trained, and that C3 had
+ * not been executed after its precondition was measured.
+ */
+export interface RegisteredExperiment {
+  id: string;
+  title: string;
+  hypothesis?: string;
+  status: string;
+  dataset?: string;
+  split?: string;
+  test_region?: string;
+  arms_executed?: ExperimentArm[];
+  arms_blocked?: Record<string, string>;
+  spread_iou?: number;
+  finding?: string;
+  what_this_is?: string;
+  what_this_is_not?: string;
+  expected_direction?: string;
+  blocker?: string | { missing?: string; what_would_unblock_it?: string; targets_checked?: unknown[] };
+  headline?: unknown;
+  loro_iou?: number;
+  official_iou?: number;
+  gap_iou?: number;
+  instrument?: Record<string, unknown>;
+  report?: string | null;
+  caveats?: string[];
+}
+
 export interface Explanation {
   hazard: string;
   kind: string;
@@ -123,6 +168,7 @@ interface Catalogue {
     caveats: string[];
   } | null;
   explanations: Explanation[];
+  experiments: RegisteredExperiment[];
 }
 
 const catalogue = generated as unknown as Catalogue;
@@ -173,3 +219,10 @@ export const STATUS_MEANING: Record<AnalysisStatus, string> = {
     'Inference ran and wrote artifacts, but they did not pass validation, so nothing is drawn.',
   'ANALYSIS COMPLETE': 'Inference ran and passed its validation.',
 };
+
+export const EXPERIMENTS_REGISTER: RegisteredExperiment[] = catalogue.experiments ?? [];
+
+/** An experiment counts as executed when it produced a result, not when it exists. */
+export function executedExperiments(): RegisteredExperiment[] {
+  return EXPERIMENTS_REGISTER.filter((e) => e.status.includes('EXECUTED'));
+}

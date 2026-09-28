@@ -1,0 +1,192 @@
+{
+  "experiment": "c3_urban_domain_shift",
+  "contribution": "C3",
+  "status": "PRECONDITION MEASURED; CONTRIBUTION BLOCKED",
+  "run_at": "2026-09-28T13:23:01.231635+00:00",
+  "what_this_is": "The measured distribution shift between the rural Indian chips the flood model was trained on and a real Sentinel-1 acquisition over an Indian city.",
+  "what_this_is_not": "NOT the rural-to-urban performance gap C3 proposes. That is an IoU difference and it requires labelled urban Indian flood imagery, which does not exist in any source this project can obtain. No performance number is produced here, and none should be inferred from the shift below.",
+  "source_domain": {
+    "dataset": "Sen1Floods11 v1.1 HandLabeled",
+    "region": "India",
+    "n_chips": 24,
+    "character": "rural floodplain",
+    "radiometry": "sigma0 dB (Earth Engine COPERNICUS/S1_GRD)"
+  },
+  "target_domain": {
+    "aoi": "mumbai_mmr",
+    "aoi_name": "Mumbai Metropolitan Region",
+    "scene_id": "S1A_IW_GRDH_1SDV_20240723T010328_20240723T010353_054881_06AF21_rtc",
+    "acquired_at": "2024-07-23T01:03:41.374672+00:00",
+    "relative_orbit": 34,
+    "orbit_direction": "DESCENDING",
+    "character": "urban and peri-urban",
+    "radiometry": "gamma0_rtc_linear",
+    "provider": "planetary_computer",
+    "labelled": false
+  },
+  "distribution_gate": {
+    "created_at": "2026-09-28T13:22:54.573890+00:00",
+    "track_a_source": "Sen1Floods11 India chips (24), rural, sigma0 dB",
+    "track_b_source": "S1A_IW_GRDH_1SDV_20240723T010328_20240723T010353_054881_06AF21_rtc over Mumbai Metropolitan Region, urban, gamma0 RTC dB",
+    "git_sha": null,
+    "verdict": "warn",
+    "may_proceed": true,
+    "bands": [
+      {
+        "band": "vh_db",
+        "unit": "dB",
+        "n_a": 4877914,
+        "n_b": 26832000,
+        "mean_a": -16.463486191577946,
+        "mean_b": -14.927530324336585,
+        "std_a": 5.567435326785079,
+        "std_b": 5.339798451766173,
+        "quantiles_a": {
+          "q01": -35.23053272247314,
+          "q05": -27.251449871063233,
+          "q25": -18.604437828063965,
+          "q50": -15.502361297607422,
+          "q75": -13.07212495803833,
+          "q95": -9.518358945846563,
+          "q99": -6.01923409461975
+        },
+        "quantiles_b": {
+          "q01": -26.39669038772583,
+          "q05": -24.38649387359619,
+          "q25": -19.03872537612915,
+          "q50": -13.68040943145752,
+          "q75": -11.249080657958984,
+          "q95": -7.733259177207948,
+          "q99": -3.7149844789505373
+        },
+        "ks_statistic": 0.19384500000000005,
+        "ks_pvalue": 0.0,
+        "wasserstein": 1.7835310695928925,
+        "mean_shift": 1.535955867241361,
+        "std_ratio": 0.9591127940141956,
+        "verdict": "warn",
+        "notes": [
+          "Wasserstein 1.78 dB is a material offset.",
+          "KS p-value is reported but not used as the gate: with this many pixels any real difference is significant, so it only restates the sample size."
+        ]
+      },
+      {
+        "band": "vv_db",
+        "unit": "dB",
+        "n_a": 4877914,
+        "n_b": 26832000,
+        "mean_a": -9.587199654981632,
+        "mean_b": -7.467703773794175,
+        "std_a": 5.223355782396952,
+        "std_b": 5.672999430204728,
+        "quantiles_a": {
+          "q01": -26.083561172485354,
+          "q05": -20.968223571777344,
+          "q25": -11.426681280136108,
+          "q50": -8.864178657531738,
+          "q75": -6.61890172958374,
+          "q95": -2.581574141979219,
+          "q99": 1.3525430309772553
+        },
+        "quantiles_b": {
+          "q01": -19.716404056549074,
+          "q05": -16.87574577331543,
+          "q25": -11.296572923660278,
+          "q50": -6.9945385456085205,
+          "q75": -4.185630798339844,
+          "q95": 1.7576669156551166,
+          "q99": 7.7750483322143396
+        },
+        "ks_statistic": 0.21643999999999997,
+        "ks_pvalue": 0.0,
+        "wasserstein": 2.198907247528951,
+        "mean_shift": 2.119495881187457,
+        "std_ratio": 1.086083289467492,
+        "verdict": "warn",
+        "notes": [
+          "Wasserstein 2.20 dB is a material offset.",
+          "KS p-value is reported but not used as the gate: with this many pixels any real difference is significant, so it only restates the sample size."
+        ]
+      },
+      {
+        "band": "vv_vh_ratio",
+        "unit": "dB",
+        "n_a": 4877914,
+        "n_b": 26832000,
+        "mean_a": 6.876286536596311,
+        "mean_b": 7.459826550566342,
+        "std_a": 3.4664348512566074,
+        "std_b": 3.6738509995364406,
+        "quantiles_a": {
+          "q01": -0.8242368888854984,
+          "q05": 1.7124614715576172,
+          "q25": 4.712751626968384,
+          "q50": 6.730954945087433,
+          "q75": 8.832661151885986,
+          "q95": 12.398123741149902,
+          "q99": 16.574156150817895
+        },
+        "quantiles_b": {
+          "q01": -0.1456222724914551,
+          "q05": 2.0410423040390016,
+          "q25": 5.037779808044434,
+          "q50": 7.179121017456055,
+          "q75": 9.530868530273438,
+          "q95": 13.758110094070432,
+          "q99": 18.348850460052446
+        },
+        "ks_statistic": 0.06500499999999998,
+        "ks_pvalue": 0.0,
+        "wasserstein": 0.5997262276726378,
+        "mean_shift": 0.5835400139700315,
+        "std_ratio": 1.0598355824297818,
+        "verdict": "pass",
+        "notes": [
+          "KS p-value is reported but not used as the gate: with this many pixels any real difference is significant, so it only restates the sample size."
+        ]
+      }
+    ]
+  },
+  "expected_direction": "Urban flooding inverts the signature the model learned. Open water is smooth and returns little energy; water standing between building walls double-bounces and returns more than dry ground. A model taught 'dark means water' will therefore miss flooded streets, which is the failure mode that matters most in a city.",
+  "blocker": {
+    "missing": "labelled urban Indian flood imagery",
+    "targets_checked": [
+      {
+        "dataset": "Sen1Floods11 v1.1 HandLabeled",
+        "status": "obtained",
+        "urban_indian_scenes": "none",
+        "note": "The 68 India chips are the training domain for this project and are rural floodplain. They are the source domain, not a target."
+      },
+      {
+        "dataset": "UrbanSARFloods (processed release, Zenodo, open access)",
+        "status": "available but unsuitable",
+        "urban_indian_scenes": "none",
+        "note": "Held-out urban scenes are Weihui (China), Nova Kakhovka (Ukraine) and two Jubba (Somalia) image-label pairs. No Indian city."
+      },
+      {
+        "dataset": "Copernicus EMS rapid mapping",
+        "status": "not obtained",
+        "urban_indian_scenes": "unknown",
+        "note": "Publishes vector delineations for activated events. Activations over Indian cities would need to be identified case by case and the products are vector, not a labelled raster benchmark."
+      }
+    ],
+    "what_would_unblock_it": "Either a labelled urban Indian flood benchmark, or a Copernicus EMS activation over an Indian city whose vector delineation is rasterised to the chip grid and validated as a label set."
+  },
+  "cross_reference_rural_target": {
+    "available": true,
+    "rural_target": "nepal_koshi_terai",
+    "rural_target_scene": "S1A_IW_GRDH_1SDV_20240927T001159_20240927T001224_055843_06D317_rtc",
+    "rural_verdict": "fail",
+    "rural_band_shifts": {
+      "vh_db": 2.5519041242414797,
+      "vv_db": 2.4961572487499977,
+      "vv_vh_ratio": -0.05574687552261093
+    },
+    "interpretation": "Both targets are gamma0 RTC measured against sigma0 training chips, and both carry a mean shift of roughly +2 dB on the absolute bands. The rural target's shift is not smaller than the urban one, so the measurement below is dominated by the radiometric product difference rather than by land cover. Isolating the urban component would need a target in the same radiometry as the training data."
+  },
+  "caveats": [
+    "The shift measured here mixes two things: the rural-to-urban difference C3 is about, and the sigma0-to-gamma0 radiometric difference between the two products. They are not separated, and the second is not a domain gap at all.",
+    "One target scene, one date. A single acquisition is not the urban domain; it is one sample of it.",
+    "A distribution gate says whether a transfer is defensible, not how well it would perform. Those are different questions and only the first is answered here."
+  ]
+}
