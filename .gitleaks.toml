@@ -40,6 +40,19 @@ description = "Supabase publishable key — designed for untrusted clients"
 # one string instead keeps the exemption to exactly what is being exempted.
 regexes = [
   '''sb_publishable_ZqxJZMUFFB1LQmcpV92b5w_66qDwpiZ''',
+  # A test fixture, and a mistake this file now documents rather than hides.
+  #
+  # tests/test_gemini_configuration.py briefly used an "AIza"-prefixed string as
+  # its fake key. That is the shape of a real Google API key, so the repository's
+  # own guard -- test_the_repository_contains_no_gemini_shaped_key -- failed on
+  # it, correctly, and the fixture was changed to something that cannot be
+  # mistaken for a credential.
+  #
+  # It survives in two commits of history, which gitleaks scans in full. It is
+  # allowlisted by exact literal rather than by silencing the rule, because the
+  # rule was right: the string is not a credential, it is a string that looks
+  # like one, and the distinction is exactly what this scan exists to police.
+  '''AIzaSyTESTONLYnotarealkey0123456789abcd''',
 ]
 
 regexTarget = "match"
