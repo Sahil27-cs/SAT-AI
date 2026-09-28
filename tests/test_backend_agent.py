@@ -291,3 +291,42 @@ def test_the_degraded_answer_names_the_configured_regions_when_no_tool_ran() -> 
     assert "bihar_ganga" in text
     assert "nepal_koshi_terai" in text
     assert "No SAT-AI tool was called" in text
+
+
+# --- why the prose layer was dropped -----------------------------------------
+
+
+def test_the_three_degraded_reasons_are_distinct_statements() -> None:
+    """ "Unavailable" and "rejected" are different facts about the system.
+
+    Reporting a grounding rejection as an outage misdescribes a safety mechanism
+    that worked as a service that broke, and hides the fact that the check
+    fired at all.
+    """
+    reasons = {agents.UNAVAILABLE, agents.UNGROUNDED, agents.OVERREACHED}
+    assert len(reasons) == 3
+    assert "unavailable" in agents.UNAVAILABLE.lower()
+    assert "unavailable" not in agents.UNGROUNDED.lower()
+    assert "unavailable" not in agents.OVERREACHED.lower()
+
+
+def test_a_rejected_answer_does_not_claim_the_layer_was_unavailable() -> None:
+    body = agents._degraded_answer("q", [], ["bihar_ganga"], reason=agents.UNGROUNDED)
+    assert body.startswith(agents.UNGROUNDED)
+    assert agents.UNAVAILABLE not in body
+
+
+def test_an_overreaching_answer_says_so_specifically() -> None:
+    body = agents._degraded_answer("q", [], ["bihar_ganga"], reason=agents.OVERREACHED)
+    assert "authority" in body.split("\n")[0]
+
+
+def test_the_default_reason_is_still_unavailability() -> None:
+    """The no-key and unreachable paths pass no reason and must keep the old one."""
+    body = agents._degraded_answer("q", [], ["bihar_ganga"])
+    assert body.startswith(agents.UNAVAILABLE)
+
+
+def test_every_reason_promises_the_tool_output_that_follows() -> None:
+    for reason in (agents.UNAVAILABLE, agents.UNGROUNDED, agents.OVERREACHED):
+        assert "tool output" in reason.lower()

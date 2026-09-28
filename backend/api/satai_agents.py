@@ -475,11 +475,35 @@ def _map_actions(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [r["map_action"] for r in results if r.get("map_action")]
 
 
+#: Why the prose layer was dropped. Three genuinely different things, and
+#: reporting all three as "unavailable" is a false statement about the system:
+#: in two of them the model answered perfectly well and was *rejected*.
+UNAVAILABLE = "Language layer unavailable — returning verified tool output directly."
+UNGROUNDED = (
+    "The language layer produced an answer whose values could not all be traced "
+    "back to a tool result, so it was rejected. Verified tool output follows."
+)
+OVERREACHED = (
+    "The language layer asserted an authority SAT-AI does not have, so its "
+    "answer was rejected. Verified tool output follows."
+)
+
+
 def _degraded_answer(
-    query: str, results: list[dict[str, Any]], region_ids: list[str] | None = None
+    query: str,
+    results: list[dict[str, Any]],
+    region_ids: list[str] | None = None,
+    *,
+    reason: str = UNAVAILABLE,
 ) -> str:
-    """Structured tool output, with no generated prose layered over it."""
-    lines = ["Language layer unavailable — returning verified tool output directly.", ""]
+    """Structured tool output, with no generated prose layered over it.
+
+    `reason` is the first line, and it has to be true. "Language layer
+    unavailable" printed above an answer the language layer successfully
+    produced -- and that the validator then caught -- would misreport a working
+    safety mechanism as an outage, and hide the fact that the check fired.
+    """
+    lines = [reason, ""]
     if not results:
         configured = ", ".join(region_ids or FALLBACK_REGIONS)
         lines.append(
@@ -622,16 +646,10 @@ async def answer(request: ChatRequest) -> ChatResponse:
         summary = "; ".join(f"[{k}] {d}" for k, d in violations[:5])
         if is_hard_failure(violations):
             notes.append(f"Hard failure, not regenerated: {summary}")
-            text = _degraded_answer(request.message, results, region_ids) + (
-                "\n\n[The language layer asserted authority SAT-AI does not have; "
-                "returning verified tool output instead.]"
-            )
+            text = _degraded_answer(request.message, results, region_ids, reason=OVERREACHED)
         else:
             notes.append(f"Grounding violation: {summary}")
-            text = _degraded_answer(request.message, results, region_ids) + (
-                "\n\n[The language layer stated values not traceable to a tool "
-                "result; returning verified tool output instead.]"
-            )
+            text = _degraded_answer(request.message, results, region_ids, reason=UNGROUNDED)
 
     provenance = [
         Provenance(
