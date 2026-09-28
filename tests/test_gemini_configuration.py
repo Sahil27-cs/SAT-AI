@@ -25,7 +25,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -34,8 +34,14 @@ _BACKEND = REPO_ROOT / "backend" / "api"
 
 pytest.importorskip("httpx", reason="httpx is a serving-plane dependency")
 
-#: Distinctive, and shaped like a Google API key without being one.
-FAKE_KEY = "AIzaSyTESTONLYnotarealkey0123456789abcd"
+#: Deliberately NOT shaped like a Google API key.
+#:
+#: The first draft of this file used an "AIza..."-prefixed string, and
+#: `test_the_repository_contains_no_gemini_shaped_key` failed on it -- correctly.
+#: A fixture that trips the repository's own credential scanner teaches everyone
+#: who meets it to ignore that scanner. Nothing here depends on the prefix: the
+#: code under test checks for whitespace and non-ASCII, not for a vendor format.
+FAKE_KEY = "test-key-not-a-real-credential-0123456789"
 
 
 def _load() -> Any:
@@ -122,7 +128,7 @@ def test_a_non_ascii_key_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
     nothing.
     """
     en_dash = chr(0x2013)
-    monkeypatch.setenv("GEMINI_API_KEY", f"AIzaSy{en_dash}notarealkey")
+    monkeypatch.setenv("GEMINI_API_KEY", f"testkey{en_dash}notarealkey")
     problem = gemini.key_problem()
     assert problem is not None
     assert "non-ASCII" in problem
@@ -136,7 +142,7 @@ def test_a_non_ascii_key_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
     [
         "AIza\nsecret-tail-value",
         "gemini api key-SECRETVALUE123",
-        "AIzaSy" + chr(0x2013) + "SECRETVALUE123",
+        "testkey" + chr(0x2013) + "SECRETVALUE123",
     ],
 )
 def test_the_diagnostic_never_quotes_the_key(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
@@ -191,3 +197,106 @@ def test_an_unusable_key_is_refused_before_the_request(
     with pytest.raises(gemini.GeminiNotConfigured) as caught:
         asyncio.run(gemini.call_gemini([{"role": "user", "parts": [{"text": "hello"}]}]))
     assert "line break" in str(caught.value)
+
+
+# --- a retired model identifier ----------------------------------------------
+
+
+class _Response:
+    """Enough of an httpx response for the code under test."""
+
+    def __init__(self, status_code: int, payload: dict[str, Any]) -> None:
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self) -> dict[str, Any]:
+        return self._payload
+
+
+class _Client:
+    """Records which model each request was addressed to."""
+
+    # Class-level on purpose: the code under test constructs its own client, so
+    # the recorder cannot be passed in. Reset by `_run_with_stub` before each use.
+    calls: ClassVar[list[str]] = []
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    async def __aenter__(self) -> _Client:
+        return self
+
+    async def __aexit__(self, *exc: Any) -> None:
+        return None
+
+    async def post(self, url: str, **kwargs: Any) -> _Response:
+        model = url.rsplit("/models/", 1)[1].split(":")[0]
+        _Client.calls.append(model)
+        if model == "gemini-2.5-flash":
+            return _Response(
+                404,
+                {
+                    "error": {
+                        "message": (
+                            "This model models/gemini-2.5-flash is no longer available "
+                            "to new users. Please update your code to use "
+                            "models/gemini-3.8-flash"
+                        )
+                    }
+                },
+            )
+        return _Response(
+            200,
+            {
+                "candidates": [{"content": {"parts": [{"text": "answered"}]}}],
+                "usageMetadata": {"totalTokenCount": 11},
+            },
+        )
+
+
+def _run_with_stub(monkeypatch: pytest.MonkeyPatch, configured_model: str) -> tuple[str, dict]:
+    import asyncio
+
+    _Client.calls = []
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
+    monkeypatch.setenv("GEMINI_MODEL", configured_model)
+    monkeypatch.setattr(gemini.httpx, "AsyncClient", _Client)
+    text, _calls, usage = asyncio.run(
+        gemini.call_gemini([{"role": "user", "parts": [{"text": "hi"}]}])
+    )
+    return text, usage
+
+
+def test_a_retired_model_falls_back_once_to_the_current_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A deployment naming a retired model would otherwise stay degraded forever.
+
+    Google retires identifiers on its own schedule. The 404 body names the
+    replacement, so the failure is recoverable -- but only once, and only onto
+    the identifier this code was written against.
+    """
+    text, _usage = _run_with_stub(monkeypatch, "gemini-2.5-flash")
+
+    assert text == "answered"
+    assert _Client.calls == ["gemini-2.5-flash", gemini.DEFAULT_MODEL]
+
+
+def test_the_model_that_actually_answered_is_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Silently substituting a model would make every answer's provenance a guess.
+
+    The C1 measurement is a claim about a named model. If the configured one is
+    retired and another answers, the artifact has to say which.
+    """
+    _text, usage = _run_with_stub(monkeypatch, "gemini-2.5-flash")
+    assert usage["model"] == gemini.DEFAULT_MODEL
+    assert usage["model"] != "gemini-2.5-flash"
+
+
+def test_a_working_model_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fallback must not fire on a model that answered."""
+    _text, usage = _run_with_stub(monkeypatch, gemini.DEFAULT_MODEL)
+    assert _Client.calls == [gemini.DEFAULT_MODEL]
+    assert usage["model"] == gemini.DEFAULT_MODEL

@@ -44,7 +44,7 @@ API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 #: deployment whose account has a different model available should not need a
 #: code change. `scripts/check_env.py` lists what the configured key can
 #: actually reach.
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.8-flash"
 
 TIMEOUT_S = 45.0
 
@@ -189,7 +189,32 @@ async def call_gemini(
     if problem is not None:
         raise GeminiNotConfigured(problem)
 
-    url = f"{API_BASE}/models/{model_name()}:generateContent"
+    return await _post(model_name(), key, body, allow_fallback=True)
+
+
+#: Google's own wording when an identifier has been retired. Matched rather than
+#: guessed at: the 404 body names the replacement model, which is the only
+#: authoritative statement of what to use instead.
+_RETIRED = "no longer available"
+
+
+async def _post(
+    model: str,
+    key: str,
+    body: dict[str, Any],
+    *,
+    allow_fallback: bool,
+) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    """One call to one model, with a single retry onto the current default.
+
+    Model identifiers are retired on Google's schedule. A deployment whose
+    ``GEMINI_MODEL`` names a retired one would otherwise be permanently
+    degraded, with the reason visible only in a chat note. It falls back once,
+    to the identifier this code was written against, and **records which model
+    actually answered** -- silently substituting a model would make the
+    provenance of every response a guess.
+    """
+    url = f"{API_BASE}/models/{model}:generateContent"
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
             response = await client.post(
@@ -210,11 +235,23 @@ async def call_gemini(
             detail = response.json().get("error", {}).get("message", "")[:200]
         except (ValueError, AttributeError):
             detail = ""
+
+        if (
+            allow_fallback
+            and response.status_code == 404
+            and _RETIRED in detail
+            and model != DEFAULT_MODEL
+        ):
+            return await _post(DEFAULT_MODEL, key, body, allow_fallback=False)
+
         raise GeminiError(f"Gemini returned {response.status_code}: {detail}")
 
     payload = response.json()
     text, calls = _extract(payload)
-    usage = payload.get("usageMetadata", {})
+    usage = dict(payload.get("usageMetadata", {}))
+    # The model that actually produced this text, which is not necessarily the
+    # one that was configured.
+    usage["model"] = model
     return text, calls, usage
 
 
