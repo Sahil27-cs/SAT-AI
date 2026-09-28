@@ -145,8 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     if not result.scenes:
         print(
-            f"BLOCKED: no Sentinel-1 RTC scene over {aoi.id} "
-            f"between {args.start} and {args.end}."
+            f"BLOCKED: no Sentinel-1 RTC scene over {aoi.id} between {args.start} and {args.end}."
         )
         return 2
     scene = result.scenes[0]
