@@ -59,8 +59,47 @@ class GeminiNotConfigured(GeminiError):
     data plane."""
 
 
+#: Characters that cannot appear in an HTTP header value. A key pasted into a
+#: dashboard field picks up a trailing newline often enough that httpx raising
+#: `LocalProtocolError` -- which names neither the header nor the cause -- is a
+#: predictable and very confusing deployment failure.
+_ILLEGAL_IN_HEADER = ("\r", "\n", "\t", "\0")
+
+
 def _api_key() -> str:
-    return os.environ.get("GEMINI_API_KEY", "")
+    """The configured key, with copy-paste whitespace removed.
+
+    Stripped rather than used verbatim: a leading or trailing space or newline
+    is invisible in a dashboard, makes the key unusable as a header value, and
+    produces an error that points nowhere near the cause.
+    """
+    return os.environ.get("GEMINI_API_KEY", "").strip()
+
+
+def key_problem() -> str | None:
+    """Why the configured key cannot be used, or None if it looks usable.
+
+    Deliberately describes the defect without quoting any part of the key. The
+    point is to tell an operator what to fix, not to print a credential into a
+    health response or a log line.
+    """
+    raw = os.environ.get("GEMINI_API_KEY")
+    if raw is None or not raw.strip():
+        return "GEMINI_API_KEY is not set"
+    key = raw.strip()
+    if any(ch in key for ch in _ILLEGAL_IN_HEADER):
+        return (
+            "GEMINI_API_KEY contains a line break or tab, which cannot be sent "
+            "as an HTTP header. Re-paste the key as a single line."
+        )
+    if " " in key:
+        return (
+            "GEMINI_API_KEY contains a space. Google API keys do not; the value "
+            "probably includes a label or was pasted with surrounding text."
+        )
+    if not key.isascii():
+        return "GEMINI_API_KEY contains non-ASCII characters and cannot be sent as a header."
+    return None
 
 
 def model_name() -> str:
@@ -82,6 +121,10 @@ def describe_configuration() -> dict[str, Any]:
         "provider": "google-gemini",
         "configured": is_configured(),
         "model": model_name() if is_configured() else None,
+        # Names the defect, never any part of the value. A key that is present
+        # but unusable is otherwise indistinguishable from a working one until
+        # the first chat turn fails.
+        "key_problem": key_problem(),
     }
 
 
@@ -138,6 +181,13 @@ async def call_gemini(
         # should be writing its final answer from results it already has. AUTO
         # lets it stop calling, which is what makes the loop terminate.
         body["toolConfig"] = {"functionCallingConfig": {"mode": "AUTO"}}
+
+    # Checked before the request rather than after the failure: httpx reports a
+    # malformed header as LocalProtocolError, which names neither the header nor
+    # what was wrong with it.
+    problem = key_problem()
+    if problem is not None:
+        raise GeminiNotConfigured(problem)
 
     url = f"{API_BASE}/models/{model_name()}:generateContent"
     try:

@@ -12,6 +12,10 @@ Roles, per ADR-002:
   **Search needs no credentials**, which is what makes the Phase 2 AOI
   measurement runnable before any account exists.
 - **FIRMS** — active fire *observations*, from Phase 16.
+- **Planetary Computer** — anonymous STAC access to the same Copernicus
+  archives, including terrain-corrected Sentinel-1. Added because
+  "credentials" was recorded as the blocker on acquisition when it was
+  only the blocker on two particular routes.
 """
 
 from __future__ import annotations
@@ -27,10 +31,18 @@ from satai.providers.cdse import S1_IW_GRD, S2_L2A, CDSEProvider
 from satai.providers.firms import FIRMS_CAVEATS, FireDetection, FIRMSProvider
 from satai.providers.gee import GEE_COLLECTIONS, EarthEngineProvider
 from satai.providers.manifest import Manifest, ManifestEntry
+from satai.providers.planetary import (
+    PC_COLLECTIONS,
+    RADIOMETRY,
+    PlanetaryComputerProvider,
+    sign_href,
+)
 
 __all__ = [
     "FIRMS_CAVEATS",
     "GEE_COLLECTIONS",
+    "PC_COLLECTIONS",
+    "RADIOMETRY",
     "S1_IW_GRD",
     "S2_L2A",
     "CDSEProvider",
@@ -39,12 +51,14 @@ __all__ = [
     "FireDetection",
     "Manifest",
     "ManifestEntry",
+    "PlanetaryComputerProvider",
     "Provider",
     "ProviderStatus",
     "SceneRef",
     "SearchQuery",
     "SearchResult",
     "available_providers",
+    "sign_href",
 ]
 
 
@@ -57,5 +71,10 @@ def available_providers() -> dict[str, dict[str, object]]:
     """
     return {
         provider.name: provider.describe()
-        for provider in (CDSEProvider(), EarthEngineProvider(), FIRMSProvider())
+        for provider in (
+            CDSEProvider(),
+            EarthEngineProvider(),
+            FIRMSProvider(),
+            PlanetaryComputerProvider(),
+        )
     }
