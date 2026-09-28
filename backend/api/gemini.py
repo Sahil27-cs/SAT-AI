@@ -22,6 +22,7 @@ key is present without revealing anything about it.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any
 
@@ -31,7 +32,9 @@ __all__ = [
     "DEFAULT_MODEL",
     "GeminiError",
     "GeminiNotConfigured",
+    "call_args",
     "call_gemini",
+    "call_name",
     "describe_configuration",
     "is_configured",
 ]
@@ -144,7 +147,12 @@ def _extract(payload: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
 
     parts = candidates[0].get("content", {}).get("parts") or []
     text = "".join(p["text"] for p in parts if "text" in p)
-    calls = [p["functionCall"] for p in parts if "functionCall" in p]
+    # The whole part, not just the inner functionCall. Gemini 3 attaches a
+    # `thoughtSignature` as a *sibling* of `functionCall`, and refuses the next
+    # turn with "Function call is missing a thought_signature" if the history it
+    # receives back has lost it. Reconstructing the part from its pieces is what
+    # loses it, so nothing is reconstructed.
+    calls = [p for p in parts if "functionCall" in p]
     return text, calls
 
 
@@ -198,12 +206,20 @@ async def call_gemini(
 _RETIRED = "no longer available"
 
 
+#: Statuses that mean "try again", not "you asked for something impossible".
+#: 503 is what a newly-released model returns under load.
+_TRANSIENT_STATUS = frozenset({429, 500, 502, 503, 504})
+_MAX_ATTEMPTS = 3
+_BACKOFF_S = 1.5
+
+
 async def _post(
     model: str,
     key: str,
     body: dict[str, Any],
     *,
     allow_fallback: bool,
+    attempt: int = 0,
 ) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
     """One call to one model, with a single retry onto the current default.
 
@@ -244,6 +260,15 @@ async def _post(
         ):
             return await _post(DEFAULT_MODEL, key, body, allow_fallback=False)
 
+        # Capacity, not a defect in the request. Observed repeatedly against a
+        # freshly-released model. Retried a few times with backoff, because
+        # degrading a question the system could have answered -- and telling the
+        # user the language layer is unavailable -- is a worse outcome than
+        # waiting two seconds.
+        if response.status_code in _TRANSIENT_STATUS and attempt < _MAX_ATTEMPTS - 1:
+            await asyncio.sleep(_BACKOFF_S * (2**attempt))
+            return await _post(model, key, body, allow_fallback=allow_fallback, attempt=attempt + 1)
+
         raise GeminiError(f"Gemini returned {response.status_code}: {detail}")
 
     payload = response.json()
@@ -265,12 +290,32 @@ def model_turn(text: str, calls: list[dict[str, Any]]) -> dict[str, Any]:
     Required by the protocol: a ``functionResponse`` is only valid if the
     matching ``functionCall`` is present in the history. Dropping it produces a
     400 that reads as though the tool result were malformed.
+
+    The parts are replayed exactly as they arrived. Gemini 3 carries a
+    ``thoughtSignature`` alongside each ``functionCall``, and rebuilding the part
+    from its name and arguments silently discards it -- which the API rejects
+    with a message about the tool result rather than about the history.
     """
     parts: list[dict[str, Any]] = []
     if text:
         parts.append({"text": text})
-    parts.extend({"functionCall": call} for call in calls)
+    # Verbatim. `calls` are the model's own parts as it sent them, including any
+    # `thoughtSignature`, and the protocol requires that signature to come back.
+    parts.extend(calls)
     return {"role": "model", "parts": parts or [{"text": ""}]}
+
+
+def call_name(part: dict[str, Any]) -> str:
+    """The tool name inside a function-call part."""
+    call: dict[str, Any] = part.get("functionCall") or {}
+    return str(call.get("name", ""))
+
+
+def call_args(part: dict[str, Any]) -> dict[str, Any]:
+    """The arguments inside a function-call part."""
+    call: dict[str, Any] = part.get("functionCall") or {}
+    arguments: dict[str, Any] = call.get("args") or {}
+    return arguments
 
 
 def tool_turn(name: str, result: dict[str, Any]) -> dict[str, Any]:

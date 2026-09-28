@@ -38,7 +38,9 @@ from agent_tools import TOOL_DECLARATIONS, execute_tool, groundable_values
 from gemini import (
     GeminiError,
     GeminiNotConfigured,
+    call_args,
     call_gemini,
+    call_name,
     describe_configuration,
     is_configured,
     model_turn,
@@ -569,8 +571,11 @@ async def answer(request: ChatRequest) -> ChatResponse:
 
             contents.append(model_turn(text, calls))
             for call in calls:
-                name = call.get("name", "")
-                arguments = call.get("args", {}) or {}
+                # `call` is the model's whole part, so the tool name and
+                # arguments come out through accessors rather than by indexing
+                # into a shape that also carries the thought signature.
+                name = call_name(call)
+                arguments = call_args(call)
                 called.append(name)
                 result = await execute_tool(name, arguments, query_fn=_query, study_areas=areas)
                 result["_tool"] = name

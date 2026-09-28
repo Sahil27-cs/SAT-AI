@@ -300,3 +300,65 @@ def test_a_working_model_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None
     _text, usage = _run_with_stub(monkeypatch, gemini.DEFAULT_MODEL)
     assert _Client.calls == [gemini.DEFAULT_MODEL]
     assert usage["model"] == gemini.DEFAULT_MODEL
+
+
+# --- the tool loop's thought signature ---------------------------------------
+
+
+def test_a_function_call_part_keeps_its_thought_signature() -> None:
+    """Gemini 3 refuses the next turn without it.
+
+    The signature sits beside `functionCall` in the part, not inside it, so
+    rebuilding the part from a name and arguments discards it -- and the API
+    rejects the result with a message about the tool response, pointing away
+    from the actual cause.
+    """
+    payload = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {"text": "looking that up"},
+                        {
+                            "functionCall": {"name": "get_flood", "args": {"region": "bihar"}},
+                            "thoughtSignature": "SIG-abc123",
+                        },
+                    ]
+                }
+            }
+        ]
+    }
+    text, calls = gemini._extract(payload)
+
+    assert text == "looking that up"
+    assert len(calls) == 1
+    assert calls[0]["thoughtSignature"] == "SIG-abc123"
+
+
+def test_the_replayed_model_turn_carries_the_signature_through() -> None:
+    call_part = {
+        "functionCall": {"name": "get_flood", "args": {"region": "bihar"}},
+        "thoughtSignature": "SIG-abc123",
+    }
+    turn = gemini.model_turn("looking that up", [call_part])
+
+    assert turn["role"] == "model"
+    signatures = [p.get("thoughtSignature") for p in turn["parts"] if "functionCall" in p]
+    assert signatures == ["SIG-abc123"]
+
+
+def test_the_accessors_read_a_whole_part() -> None:
+    """The loop stopped indexing the call directly once the part became the unit."""
+    part = {
+        "functionCall": {"name": "get_flood", "args": {"region": "bihar_ganga"}},
+        "thoughtSignature": "SIG",
+    }
+    assert gemini.call_name(part) == "get_flood"
+    assert gemini.call_args(part) == {"region": "bihar_ganga"}
+
+
+def test_the_accessors_tolerate_a_call_with_no_arguments() -> None:
+    """Gemini omits `args` entirely for a no-argument tool."""
+    part = {"functionCall": {"name": "list_study_areas"}}
+    assert gemini.call_name(part) == "list_study_areas"
+    assert gemini.call_args(part) == {}
