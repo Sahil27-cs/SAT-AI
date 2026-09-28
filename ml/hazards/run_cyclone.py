@@ -145,7 +145,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"        peak wind over the AOI {peak_wind.max():.1f} m/s")
 
     # --- real exposure -------------------------------------------------------
-    product = product_for(aoi.country)
+    # 1 km, matching GRID_DEG: the wind field has no structure finer than the
+    # storm's radius of maximum wind, so the 100 m product would be half a
+    # gigabyte of resolution thrown away on the next line.
+    product = product_for(aoi.country, resolution="1km")
     population_path = fetch_population(product, REPO_ROOT / "data/raw/worldpop" / product.filename)
     population, total_in_window = _resample_population(population_path, aoi.bbox, lon_grid.shape)
     # Normalised for the engine, which wants [0, 1]; the count is kept for the
@@ -201,6 +204,41 @@ def main(argv: list[str] | None = None) -> int:
         "run_at": datetime.now(UTC).isoformat(),
         "grid": {"shape": list(lon_grid.shape), "resolution_deg": GRID_DEG, "crs": "EPSG:4326"},
         "track": track.provenance(),
+        # Small enough to serve: 62 fixes is a few kilobytes, and a track is the
+        # one part of a cyclone analysis a reader can check against any public
+        # record of the storm.
+        "track_geojson": {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": [[p.lon, p.lat] for p in track.points],
+                    },
+                    "properties": {
+                        "storm": track.name,
+                        "season": track.season,
+                        "sid": track.sid,
+                        "source_kind": "observation",
+                        "dataset": "IBTrACS v04r01",
+                    },
+                },
+                *[
+                    {
+                        "type": "Feature",
+                        "geometry": {"type": "Point", "coordinates": [point.lon, point.lat]},
+                        "properties": {
+                            "observed_at": when.isoformat(),
+                            "max_wind_ms": round(point.max_wind_ms, 1),
+                            "radius_max_wind_km": round(point.radius_max_wind_km, 1),
+                            "source_kind": "observation",
+                        },
+                    }
+                    for point, when in zip(track.points, track.times, strict=True)
+                ],
+            ],
+        },
         "exposure": product.provenance(population_path),
         "wind": {
             "source_kind": "derived",

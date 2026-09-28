@@ -58,6 +58,8 @@ OUTPUT = REPO_ROOT / "ml" / "experiments" / "c2_modality_ablation.json"
 #: rest name the raster they need, because "not executed" without a reason is
 #: indistinguishable from "forgotten".
 ARMS: tuple[tuple[str, str, str | None], ...] = (
+    ("vv_only", "Sentinel-1 VV only", None),
+    ("vh_only", "Sentinel-1 VH only", None),
     ("sar", "Sentinel-1 VV + VH", None),
     ("sar_ratio", "Sentinel-1 VV + VH + VV/VH dB ratio", None),
     (
@@ -109,7 +111,9 @@ def main(argv: list[str] | None = None) -> int:
     if len(executed) < 2:
         raise SystemExit(f"C2 needs at least two executed arms to compare; have {sorted(executed)}")
 
-    # The fullest executed arm is the reference; the others are the degradation.
+    # The fullest executed arm is the reference; every other arm is reported as
+    # its degradation. On this dataset two of them are negative, which is the
+    # result rather than a problem with the framing.
     reference_arm = max(executed, key=lambda a: executed[a]["n_bands"])
     reference = executed[reference_arm]
 

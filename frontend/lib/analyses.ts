@@ -60,6 +60,8 @@ export interface Analysis {
   wind?: Record<string, unknown>;
   risk?: Record<string, unknown>;
   population?: Record<string, unknown>;
+  /** Servable geometry, present only where it is small enough to ship. */
+  geometry?: { type: string; features: unknown[] } | null;
   detections?: FireDetection[];
   artifacts_on_disk?: Record<string, string>;
   artifacts_served?: boolean;

@@ -49,7 +49,8 @@ __all__ = [
     "product_for",
 ]
 
-BASE = "https://data.worldpop.org/GIS/Population/Global_2000_2020_Constrained/2020/BSGM"
+BASE_100M = "https://data.worldpop.org/GIS/Population/Global_2000_2020_Constrained/2020/BSGM"
+BASE_1KM = "https://data.worldpop.org/GIS/Population/Global_2000_2020_1km/2020"
 
 WORLDPOP_LICENCE = "CC BY 4.0"
 WORLDPOP_CITATION = (
@@ -71,17 +72,26 @@ class WorldPopProduct:
     iso3: str
     year: int
     url: str
+    resolution: str = "100m"
+    constrained: bool = True
     licence: str = WORLDPOP_LICENCE
     citation: str = WORLDPOP_CITATION
 
     @property
     def filename(self) -> str:
+        if self.resolution == "1km":
+            return f"{self.iso3.lower()}_ppp_{self.year}_1km_Aggregated.tif"
         return f"{self.iso3.lower()}_ppp_{self.year}_constrained.tif"
 
     def provenance(self, local_path: Path | None = None) -> dict[str, Any]:
         return {
             "dataset": "WorldPop Global High Resolution Population Denominators",
-            "product": f"{self.iso3} {self.year} constrained, 100 m",
+            "product": (
+                f"{self.iso3} {self.year} "
+                f"{'constrained' if self.constrained else 'aggregated'}, {self.resolution}"
+            ),
+            "resolution": self.resolution,
+            "constrained": self.constrained,
             "source_kind": "model",
             "provider": "worldpop",
             "url": self.url,
@@ -93,27 +103,60 @@ class WorldPopProduct:
                 "Modelled population surface, not a census. Values are "
                 "dasymetrically redistributed from census units; per-pixel "
                 "error is largest where settlement is sparse.",
-                "Constrained product: population is placed only where built "
-                "settlement was detected. The unconstrained variant would "
-                "spread population across the floodplain itself.",
+                (
+                    "Constrained product: population is placed only where built "
+                    "settlement was detected. The unconstrained variant would "
+                    "spread population across the floodplain itself."
+                    if self.constrained
+                    else "WorldPop 1 km aggregate, used where the analysis grid is "
+                    "itself ~1 km. Summing the 100 m constrained product to this "
+                    "grid gives the same totals."
+                ),
                 "2020 estimate. Population has changed since; this is the most "
                 "recent year of this product.",
             ],
         }
 
 
-def product_for(country: str, year: int = 2020) -> WorldPopProduct:
-    """The population product covering a study area's country."""
+def product_for(country: str, year: int = 2020, resolution: str = "100m") -> WorldPopProduct:
+    """The population product covering a study area's country.
+
+    `resolution` should match the grid the analysis runs on:
+
+    ``100m``
+        The constrained product. Right for flood work, where the hazard field is
+        a 10 m raster and where *where* people are inside a floodplain is the
+        whole question.
+    ``1km``
+        WorldPop's own aggregate of the same estimates. Right for the cyclone
+        wind field, which is computed on a ~1 km grid because a parametric
+        vortex has no structure finer than its radius of maximum wind.
+
+    The choice is about transfer cost, not about the science: summing the 100 m
+    product to 1 km reproduces the 1 km product, and India's 100 m raster is
+    506 MB against 18 MB for the aggregate. Downloading half a gigabyte to
+    immediately throw away its resolution is not rigour.
+    """
     iso3 = COUNTRY_ISO3.get(country)
     if iso3 is None:
         raise ValidationError(
             f"no WorldPop product configured for {country!r}; known: "
             f"{', '.join(sorted(COUNTRY_ISO3))}"
         )
+    if resolution == "1km":
+        return WorldPopProduct(
+            iso3=iso3,
+            year=year,
+            url=f"{BASE_1KM}/{iso3}/{iso3.lower()}_ppp_{year}_1km_Aggregated.tif",
+            resolution="1km",
+            constrained=False,
+        )
+    if resolution != "100m":
+        raise ValidationError(f"unknown resolution {resolution!r}; use '100m' or '1km'")
     return WorldPopProduct(
         iso3=iso3,
         year=year,
-        url=f"{BASE}/{iso3}/{iso3.lower()}_ppp_{year}_constrained.tif",
+        url=f"{BASE_100M}/{iso3}/{iso3.lower()}_ppp_{year}_constrained.tif",
     )
 
 

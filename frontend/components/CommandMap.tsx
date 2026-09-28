@@ -19,7 +19,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { StudyArea } from '@/lib/study-areas';
 import { ROLE_LABEL, verifiedEvents } from '@/lib/study-areas';
 import type { Analysis } from '@/lib/analyses';
-import { WILDFIRE, analysesFor } from '@/lib/analyses';
+import { ANALYSED_AREAS, WILDFIRE, analysesFor } from '@/lib/analyses';
 
 export type LayerId =
   | 'aoi'
@@ -160,6 +160,70 @@ export function buildLayers(area: StudyArea | undefined): LayerState[] {
   ];
 }
 
+/**
+ * The observed cyclone track, as a feature collection.
+ *
+ * Empty when no cyclone analysis has been produced, which is a real state and
+ * not an error: the map then simply has no track on it.
+ */
+function cycloneTrackGeoJSON(): GeoJSON.FeatureCollection {
+  const empty: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
+  const features = ANALYSED_AREAS.flatMap((area) =>
+    area.analyses
+      .filter((a) => a.hazard === 'cyclone' && a.displayable)
+      .flatMap((a) => (a.geometry?.features ?? []) as GeoJSON.Feature[]),
+  );
+  return features.length ? { type: 'FeatureCollection', features } : empty;
+}
+
+/** Active-fire detections across every study area that had any. */
+function fireDetectionsGeoJSON(): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = ANALYSED_AREAS.flatMap((area) =>
+    area.analyses
+      .filter((a) => a.hazard === 'wildfire')
+      .flatMap((a) =>
+        (a.detections ?? []).map((d) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [d.lon, d.lat] },
+          properties: {
+            observed_at: d.observed_at,
+            frp_mw: d.frp_mw,
+            confidence: d.confidence,
+            aoi: area.id,
+          },
+        })),
+      ),
+  );
+  return { type: 'FeatureCollection', features };
+}
+
+/**
+ * A popup built as DOM rather than an HTML string.
+ *
+ * Every value here comes from a data file, and interpolating it into markup
+ * would make the map's rendering path depend on that content being safe.
+ */
+function popup(
+  maplibre: typeof import('maplibre-gl'),
+  map: import('maplibre-gl').Map,
+  lngLat: import('maplibre-gl').LngLatLike,
+  rows: [string, string][],
+): void {
+  const container = document.createElement('div');
+  container.className = 'map-popup';
+  for (const [label, value] of rows) {
+    const line = document.createElement('div');
+    const strong = document.createElement('strong');
+    strong.textContent = label;
+    line.append(strong, document.createTextNode(value));
+    container.append(line);
+  }
+  new maplibre.Popup({ closeButton: true })
+    .setLngLat(lngLat)
+    .setDOMContent(container)
+    .addTo(map);
+}
+
 const ROLE_COLOUR: Record<string, string> = {
   training: '#38bdf8',
   transfer_evaluation: '#a78bfa',
@@ -296,6 +360,85 @@ export function CommandMap({
           // line after it, which is how the whole overlay went missing once.
           // Region names are carried by the selector and the analysis panel,
           // and seven labelled rectangles at country zoom would overlap anyway.
+
+          // --- real analyses, drawn only where one exists ------------------
+          //
+          // Both sources are added unconditionally with whatever geometry the
+          // catalogue holds, and are empty collections when nothing has been
+          // produced. Adding a source conditionally inside a load handler is
+          // how a layer ends up referenced before it exists.
+
+          map.addSource('cyclone-track', {
+            type: 'geojson',
+            data: cycloneTrackGeoJSON(),
+          });
+          map.addLayer({
+            id: 'cyclone-track-line',
+            type: 'line',
+            source: 'cyclone-track',
+            filter: ['==', ['geometry-type'], 'LineString'],
+            paint: {
+              'line-color': '#f472b6',
+              'line-width': 2,
+              'line-opacity': 0.9,
+            },
+          });
+          map.addLayer({
+            id: 'cyclone-track-fixes',
+            type: 'circle',
+            source: 'cyclone-track',
+            filter: ['==', ['geometry-type'], 'Point'],
+            paint: {
+              // Radius carries the observed wind, so the track reads as a
+              // storm rather than a line. Interpolated on the real m/s range.
+              'circle-radius': [
+                'interpolate',
+                ['linear'],
+                ['coalesce', ['get', 'max_wind_ms'], 0],
+                10, 2.5,
+                60, 8,
+              ],
+              'circle-color': '#f472b6',
+              'circle-opacity': 0.55,
+              'circle-stroke-color': '#fff',
+              'circle-stroke-width': 0.5,
+            },
+          });
+
+          map.addSource('fire-detections', {
+            type: 'geojson',
+            data: fireDetectionsGeoJSON(),
+          });
+          map.addLayer({
+            id: 'fire-detection-points',
+            type: 'circle',
+            source: 'fire-detections',
+            paint: {
+              'circle-radius': 5,
+              'circle-color': '#fb923c',
+              'circle-opacity': 0.85,
+              'circle-stroke-color': '#7c2d12',
+              'circle-stroke-width': 1,
+            },
+          });
+
+          map.on('click', 'cyclone-track-fixes', (e) => {
+            const props = e.features?.[0]?.properties ?? {};
+            popup(maplibre, map, e.lngLat, [
+              ['Observed fix', String(props.observed_at ?? '')],
+              ['Max wind', `${String(props.max_wind_ms ?? '?')} m/s`],
+              ['Source', 'IBTrACS v04r01 best track (OBSERVATION)'],
+            ]);
+          });
+          map.on('click', 'fire-detection-points', (e) => {
+            const props = e.features?.[0]?.properties ?? {};
+            popup(maplibre, map, e.lngLat, [
+              ['Detected', String(props.observed_at ?? '')],
+              ['Radiative power', `${String(props.frp_mw ?? '?')} MW`],
+              ['Confidence', String(props.confidence ?? 'unknown')],
+              ['Source', 'NASA FIRMS VIIRS (OBSERVATION)'],
+            ]);
+          });
 
           map.on('click', 'aoi-fill', (e) => {
             const id = e.features?.[0]?.properties?.id;
