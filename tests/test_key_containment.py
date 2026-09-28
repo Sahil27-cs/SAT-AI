@@ -268,9 +268,44 @@ def test_the_repository_contains_no_gemini_shaped_key() -> None:
     pattern = re.compile(r"AIza[0-9A-Za-z_\-]{30,}")
     offenders = []
     for name in filter(None, listing.stdout.split("\0")):
+        # The gitleaks allowlist is the one file that must be allowed to contain
+        # such a string, because an allowlist works by quoting exactly what it
+        # permits. This looks circular and is the narrowest exemption available:
+        # one named path, reviewed as security configuration, and checked by the
+        # test below for the property the exemption actually rests on.
+        if name == ".gitleaks.toml":
+            continue
         path = REPO_ROOT / name
         if not path.is_file() or path.stat().st_size > 2_000_000:
             continue
         if pattern.search(path.read_text(encoding="utf-8", errors="ignore")):
             offenders.append(name)
     assert not offenders, f"Google-API-key-shaped strings in: {offenders}"
+
+
+def test_the_gitleaks_allowlist_only_permits_exact_literals() -> None:
+    """An allowlist entry must name one string, not a class of them.
+
+    This is what the exemption above rests on. A pattern like `AIza.*` in the
+    allowlist would silence the rule completely while still reading as a
+    careful, narrow entry, and every real key committed afterwards would pass
+    the scan.
+    """
+    import re
+
+    config = REPO_ROOT / ".gitleaks.toml"
+    if not config.is_file():
+        pytest.skip("no gitleaks config in this checkout")
+
+    text = config.read_text(encoding="utf-8")
+    quote = "'" * 3
+    entries = re.findall(f"{quote}(.*?){quote}", text, re.DOTALL)
+    assert entries, "the allowlist declares no literals"
+
+    for entry in entries:
+        assert "\n" not in entry, f"allowlist entry spans lines: {entry[:40]!r}"
+        for metacharacter in (".*", ".+", "[", "(", "|", "?", "\\w", "\\d"):
+            assert metacharacter not in entry, (
+                f"allowlist entry {entry[:32]!r} contains {metacharacter!r}, "
+                f"which would exempt a class of secrets rather than one string"
+            )
