@@ -590,6 +590,85 @@ button.ghost:hover { border-color: var(--accent-dim); color: var(--fg); }
 .map-popup strong { display: block; margin-bottom: 3px; }
 .map-popup em { display: block; margin-top: 4px; color: #666; }
 
+
+/* ------------------------------------------------------- produced analyses
+
+   Styling for the one part of the dashboard that shows artifacts rather than
+   configuration. The warning treatment is deliberately not an error colour:
+   an analysis that failed validation is a finding, not a fault, and colouring
+   it red would train the reader to skip it. */
+
+.analysis-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+
+.analysis-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--panel-alt, rgba(255, 255, 255, 0.02));
+}
+
+.analysis-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.analysis-hazard {
+  text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px;
+  color: var(--muted);
+}
+
+.analysis-headline { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+
+.analysis-warning {
+  margin: 8px 0; padding: 9px 11px; border-radius: 6px;
+  border-left: 3px solid #ca8a04;
+  background: rgba(202, 138, 4, 0.08);
+  font-size: 13px; line-height: 1.55;
+}
+
+.analysis-validation { margin: 10px 0; font-size: 13px; }
+
+.analysis-bands {
+  list-style: none; margin: 6px 0 0; padding: 0;
+  display: grid; gap: 3px; font-size: 12px; color: var(--muted);
+}
+
+.analysis-provenance {
+  margin: 10px 0 0; display: grid; gap: 2px; font-size: 12.5px;
+}
+
+.analysis-provenance-row {
+  display: grid; grid-template-columns: 116px 1fr; gap: 10px;
+  padding: 3px 0; border-top: 1px solid var(--line);
+}
+
+.analysis-provenance-row dt { color: var(--muted); }
+.analysis-provenance-row dd { margin: 0; word-break: break-word; }
+
+.analysis-footnote { font-size: 12px; margin-top: 10px; }
+
+/* ------------------------------------------------------- attribution bars */
+
+.attribution-list { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 7px; }
+
+.attribution-row {
+  display: grid; grid-template-columns: 120px 1fr 56px;
+  align-items: center; gap: 10px; font-size: 13px;
+}
+
+.attribution-bar {
+  height: 8px; border-radius: 4px; background: var(--line); overflow: hidden;
+}
+
+.attribution-fill { display: block; height: 100%; background: #7c3aed; }
+
+.attribution-value { text-align: right; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 860px) {
+  .analysis-provenance-row { grid-template-columns: 1fr; gap: 0; }
+  .attribution-row { grid-template-columns: 90px 1fr 48px; }
+}
+
 @media (max-width: 860px) {
   .shell { flex-direction: column; }
   .sidebar { width: 100%; height: auto; position: static; border-right: none;

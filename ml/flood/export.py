@@ -55,7 +55,7 @@ except ImportError:  # pragma: no cover - outside an installed package
 import numpy as np
 import torch
 
-from ml.flood.dataset import bands_for, build_reader, stack_with_ratio
+from ml.flood.dataset import build_reader, selection_for_bands, stack_with_ratio
 from ml.flood.evaluate import load_checkpoint
 
 DEFAULT_MODELS = REPO_ROOT / "models" / "flood"
@@ -163,9 +163,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     model, normalizer, payload = load_checkpoint(args.checkpoint, torch.device("cpu"))
-    with_ratio = "vv_vh_ratio" in payload["bands"]
-    bands = bands_for(with_ratio)
-    band_tag = "sar_ratio" if with_ratio else "sar"
+    selection = selection_for_bands(payload["bands"])
+    with_ratio = selection
+    bands = selection.bands
+    band_tag = selection.tag
 
     destination = args.out or DEFAULT_MODELS / f"flood_unet_{payload['fold']}_{band_tag}.onnx"
     export_onnx(model, destination, n_bands=len(bands), opset=args.opset)

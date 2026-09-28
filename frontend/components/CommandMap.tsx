@@ -18,8 +18,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { StudyArea } from '@/lib/study-areas';
 import { ROLE_LABEL, verifiedEvents } from '@/lib/study-areas';
+import type { Analysis } from '@/lib/analyses';
+import { WILDFIRE, analysesFor } from '@/lib/analyses';
 
-export type LayerId = 'aoi' | 'flood' | 'wildfire' | 'rainfall' | 'terrain' | 'risk' | 'damage';
+export type LayerId =
+  | 'aoi'
+  | 'flood'
+  | 'wildfire'
+  | 'cyclone'
+  | 'rainfall'
+  | 'terrain'
+  | 'risk'
+  | 'damage';
 
 export interface LayerState {
   id: LayerId;
@@ -36,14 +46,30 @@ export interface LayerState {
 }
 
 /**
- * Layer availability is derived, never hardcoded to `true`. Everything except
- * the AOI outlines depends on a batch run that has not happened for any region
- * yet, so they render as disabled rows carrying the reason rather than as
- * toggles that do nothing.
+ * Layer availability is derived from the analysis catalogue, never hardcoded.
+ *
+ * This function used to carry hand-written reasons, and every one of them went
+ * stale the moment the thing it described was done. It claimed the flood model
+ * "has not been trained" after it was trained and evaluated, and that FIRMS
+ * "requires a FIRMS_MAP_KEY" after real detections had been fetched from the
+ * keyless archive. Both statements were visible to users and both were false.
+ *
+ * So the reasons now come from `analyses.generated.json`, which is built from
+ * artifacts on disk. A layer becomes available when an analysis exists **and**
+ * passed its validation; an analysis that ran but failed validation reports
+ * that specifically, because "not validated" and "not attempted" are different
+ * things and only one of them is a gap in the work.
  */
 export function buildLayers(area: StudyArea | undefined): LayerState[] {
   const events = area ? verifiedEvents(area) : [];
   const floodEvent = events.find((e) => e.hazard === 'flood');
+  const produced = area ? analysesFor(area.id) : [];
+  const forHazard = (hazard: string, kind?: Analysis['kind']) =>
+    produced.find((a) => a.hazard === hazard && (kind === undefined || a.kind === kind));
+
+  const flood = forHazard('flood', 'model_inference');
+  const fire = forHazard('wildfire');
+  const cyclone = forHazard('cyclone');
 
   return [
     {
@@ -57,22 +83,41 @@ export function buildLayers(area: StudyArea | undefined): LayerState[] {
     {
       id: 'flood',
       label: 'Flood extent',
-      source: floodEvent ? floodEvent.sensor : 'Sentinel-1 SAR',
+      source: flood
+        ? `${flood.observation?.scene_id ?? 'Sentinel-1'} (${flood.observation?.radiometry ?? 'SAR'})`
+        : floodEvent
+          ? floodEvent.sensor
+          : 'Sentinel-1 SAR',
       kind: 'model',
-      timestamp: null,
-      available: false,
-      reason: floodEvent
-        ? `A verified Sentinel-1 event is on file for ${floodEvent.occurredOn}, but the flood segmentation model has not been trained, so no extent raster exists.`
-        : 'No verified flood event is configured for this region.',
+      timestamp: (flood?.processing?.processed_at as string) ?? null,
+      available: flood?.displayable === true,
+      reason: flood
+        ? (flood.withheld_reason ?? undefined)
+        : floodEvent
+          ? `A verified Sentinel-1 event is on file for ${floodEvent.occurredOn}, but the flood model has not been run over this area.`
+          : 'No flood inference has been run for this area.',
     },
     {
       id: 'wildfire',
       label: 'Active fire detections',
-      source: 'NASA FIRMS (VIIRS)',
+      source: 'NASA FIRMS (VIIRS, keyless regional archive)',
       kind: 'observation',
-      timestamp: null,
-      available: false,
-      reason: 'FIRMS ingestion requires a FIRMS_MAP_KEY, which is not configured on this deployment.',
+      timestamp: WILDFIRE?.run_at ?? null,
+      available: Boolean(fire?.detections?.length),
+      reason: fire?.detections?.length
+        ? undefined
+        : `No detections inside this area in the last ${WILDFIRE?.window ?? '7d'}. That is not the same as no fire: the sensor sees a pixel twice a day at best.`,
+    },
+    {
+      id: 'cyclone',
+      label: 'Cyclone track and wind',
+      source: 'IBTrACS v04r01 best track',
+      kind: 'observation',
+      timestamp: (cyclone?.observation?.last_fix as string) ?? null,
+      available: cyclone?.displayable === true,
+      reason: cyclone
+        ? undefined
+        : 'No historical cyclone analysis has been run for this area.',
     },
     {
       id: 'rainfall',
@@ -95,12 +140,13 @@ export function buildLayers(area: StudyArea | undefined): LayerState[] {
     {
       id: 'risk',
       label: 'Risk bands',
-      source: 'SAT-AI risk engine',
+      source: 'SAT-AI risk engine + WorldPop exposure',
       kind: 'index',
-      timestamp: null,
-      available: false,
-      reason:
-        'The risk engine is implemented and sensitivity-analysed, but it needs hazard, exposure and vulnerability rasters it has not been given for this region.',
+      timestamp: (cyclone?.risk?.config_hash as string) ? (cyclone?.observation?.last_fix as string) : null,
+      available: Boolean(cyclone?.risk),
+      reason: cyclone?.risk
+        ? undefined
+        : 'The risk engine needs a validated hazard field and an exposure raster for this area. Exposure is available; a validated hazard field is not.',
     },
     {
       id: 'damage',

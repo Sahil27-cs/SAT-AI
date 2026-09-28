@@ -55,7 +55,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from ml.flood.dataset import FloodBatch, FloodChips
+from ml.flood.dataset import FloodBatch, FloodChips, selection_for_bands
 from ml.flood.model import UNet, UNetSpec
 from ml.flood.train import select_fold
 from satai.ml.metrics import SegmentationMetrics, aggregate, evaluate
@@ -147,7 +147,8 @@ def main(argv: list[str] | None = None) -> int:
 
     chips = list(fold.test if args.partition == "test" else fold.val)
     regions = sorted({c.region for c in chips})
-    with_ratio = "vv_vh_ratio" in payload["bands"]
+    selection = selection_for_bands(payload["bands"])
+    with_ratio = selection
 
     dataset = FloodChips(chips, args.data_root, normalizer, with_ratio=with_ratio)
     loader = DataLoader(dataset, batch_size=args.batch_size)
@@ -183,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
         "regions": regions,
         "n_chips": len(dataset),
         "bands": payload["bands"],
-        "band_config": "sar_ratio" if with_ratio else "sar",
+        "band_config": selection.tag,
         "selection": {
             "checkpoint_selected_on": list(fold.val_regions),
             "note": (
@@ -235,7 +236,7 @@ def main(argv: list[str] | None = None) -> int:
     # The band configuration is part of the filename. Without it a SAR-only run
     # silently overwrites the SAR+ratio result for the same fold, which is
     # exactly how a modality ablation loses the arm it was comparing against.
-    band_tag = "sar_ratio" if with_ratio else "sar"
+    band_tag = selection.tag
     destination = args.out / f"{args.partition}_{fold_name}_{band_tag}.json"
     destination.write_text(json.dumps(report, indent=2), encoding="utf-8")
 

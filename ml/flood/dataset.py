@@ -28,6 +28,7 @@ channel. Shifting it by a random offset would teach the model that -12 dB and
 from __future__ import annotations
 
 from collections.abc import Sequence
+from enum import StrEnum
 from pathlib import Path
 
 import numpy as np
@@ -35,6 +36,7 @@ import numpy.typing as npt
 import torch
 from torch.utils.data import Dataset
 
+from satai.errors import ValidationError
 from satai.preprocessing.chips import ChipSpec, Sen1Floods11Dataset
 from satai.preprocessing.normalize import StackNormalizer
 from satai.preprocessing.splits import ChipRef
@@ -45,7 +47,67 @@ SAR_BANDS: tuple[str, ...] = ("vv_db", "vh_db")
 DERIVED_RATIO = "vv_vh_ratio"
 
 
-def bands_for(with_ratio: bool) -> tuple[str, ...]:
+class BandSelection(StrEnum):
+    """Which input bands an arm of the modality-loss study uses.
+
+    C2 asks what the model loses as inputs are withheld, so the band stack has
+    to be a first-class choice rather than a boolean. The two single-polarisation
+    arms are the interesting ones: VV and VH respond differently to smooth water
+    and to vegetated or built-up surfaces, so "SAR" is not one modality.
+    """
+
+    VV_VH_RATIO = "vv_vh_ratio"
+    VV_VH = "vv_vh"
+    VV = "vv"
+    VH = "vh"
+
+    @property
+    def bands(self) -> tuple[str, ...]:
+        return _SELECTION_BANDS[self]
+
+    @property
+    def tag(self) -> str:
+        """Short form used in filenames and experiment identifiers."""
+        return _SELECTION_TAGS[self]
+
+
+_SELECTION_BANDS: dict[BandSelection, tuple[str, ...]] = {
+    BandSelection.VV_VH_RATIO: (*SAR_BANDS, DERIVED_RATIO),
+    BandSelection.VV_VH: SAR_BANDS,
+    BandSelection.VV: ("vv_db",),
+    BandSelection.VH: ("vh_db",),
+}
+
+_SELECTION_TAGS: dict[BandSelection, str] = {
+    BandSelection.VV_VH_RATIO: "sar_ratio",
+    BandSelection.VV_VH: "sar",
+    BandSelection.VV: "vv_only",
+    BandSelection.VH: "vh_only",
+}
+
+
+def selection_for_bands(bands: list[str] | tuple[str, ...]) -> BandSelection:
+    """Recover the selection a checkpoint was trained with.
+
+    Derived from the recorded band names rather than from a flag, so a
+    checkpoint cannot be evaluated under a band stack it was not trained on.
+    """
+    wanted = tuple(bands)
+    for selection, names in _SELECTION_BANDS.items():
+        if names == wanted:
+            return selection
+    raise ValidationError(f"no band selection matches {wanted}")
+
+
+def bands_for(with_ratio: bool | BandSelection) -> tuple[str, ...]:
+    """Band names, in stacking order.
+
+    Still accepts the original boolean: the two-arm question "with or without
+    the ratio band" long predates the four-arm study, and every caller that only
+    ever asks that question reads better spelled that way.
+    """
+    if isinstance(with_ratio, BandSelection):
+        return with_ratio.bands
     return (*SAR_BANDS, DERIVED_RATIO) if with_ratio else SAR_BANDS
 
 
@@ -67,7 +129,7 @@ def build_reader(root: Path) -> Sen1Floods11Dataset:
 
 
 def stack_with_ratio(
-    features: npt.NDArray[np.floating], with_ratio: bool
+    features: npt.NDArray[np.floating], with_ratio: bool | BandSelection
 ) -> npt.NDArray[np.floating]:
     """Append the VV/VH dB ratio band, if requested.
 
@@ -75,7 +137,14 @@ def stack_with_ratio(
     gets its own fitted statistics. Taking the difference of two already
     standardised bands would produce a number with no units and no meaning.
     """
-    if not with_ratio:
+    if isinstance(with_ratio, BandSelection):
+        if with_ratio is BandSelection.VV:
+            return features[0:1]
+        if with_ratio is BandSelection.VH:
+            return features[1:2]
+        if with_ratio is BandSelection.VV_VH:
+            return features
+    elif not with_ratio:
         return features
     ratio = features[0] - features[1]
     return np.concatenate([features, ratio[None, ...]], axis=0)
@@ -103,7 +172,7 @@ class FloodChips(Dataset[FloodBatch]):
         root: Path,
         normalizer: StackNormalizer,
         *,
-        with_ratio: bool = True,
+        with_ratio: bool | BandSelection = True,
         augment: bool = False,
         seed: int = 42,
     ) -> None:
@@ -183,7 +252,7 @@ def fit_normalizer(
     root: Path,
     fold: str,
     *,
-    with_ratio: bool = True,
+    with_ratio: bool | BandSelection = True,
     max_chips: int = 120,
     seed: int = 42,
 ) -> StackNormalizer:

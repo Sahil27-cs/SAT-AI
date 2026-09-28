@@ -31,6 +31,8 @@ import { CommandMap } from '@/components/CommandMap';
 import {
   AnalysisPanel, DataStatus, ModelStatus, PipelineStrip, SatellitePanel, pipelineFor,
 } from '@/components/Panels';
+import { AnalysesPanel, ExplainabilityPanel } from '@/components/AnalysesPanel';
+import { ANALYSED_AREAS } from '@/lib/analyses';
 
 const SECTIONS = [
   { group: 'Monitoring', items: [['overview','Overview'],['map','Risk Map'],['flood','Flood'],
@@ -575,6 +577,9 @@ export default function Page() {
   // Uttarakhand because no row exists for them yet.
   const area: StudyArea | undefined = STUDY_AREAS.find((a) => a.id === region);
   const done = experiments.filter((e) => e.status === 'complete').length;
+  // Counted from artifacts on disk, not declared. The tile used to read a
+  // hardcoded zero, which stayed zero after the first analysis was produced.
+  const producedCount = ANALYSED_AREAS.reduce((total, a) => total + a.analyses.length, 0);
 
   return (
     <div className="shell">
@@ -705,12 +710,14 @@ export default function Page() {
                     </td></tr>
                     <tr><td>Experiments registered</td><td className="num">{experiments.length}</td></tr>
                     <tr><td>Experiments executed</td><td className="num">{done}</td></tr>
-                    <tr><td>Hazard results computed</td><td className="num">0</td></tr>
+                    <tr><td>Analyses produced</td><td className="num">{producedCount}</td></tr>
                     <tr><td>Catalogue version</td><td className="num">{CATALOGUE_VERSION}</td></tr>
                   </tbody>
                 </table>
               </div>
               <SatellitePanel event={area ? verifiedEvents(area)[0] : undefined} />
+              <AnalysesPanel area={area} />
+              <ExplainabilityPanel />
             </div>
           </>
         )}

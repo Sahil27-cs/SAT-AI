@@ -59,7 +59,13 @@ from torch.amp.autocast_mode import autocast
 from torch.amp.grad_scaler import GradScaler
 from torch.utils.data import DataLoader
 
-from ml.flood.dataset import FloodBatch, FloodChips, bands_for, build_reader, fit_normalizer
+from ml.flood.dataset import (
+    BandSelection,
+    FloodBatch,
+    FloodChips,
+    build_reader,
+    fit_normalizer,
+)
 from ml.flood.losses import FloodLoss
 from ml.flood.model import UNet, UNetSpec
 from satai.ml.metrics import SegmentationMetrics, aggregate, evaluate
@@ -103,7 +109,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--workers", type=int, default=0)
-    parser.add_argument("--no-ratio", action="store_true", help="SAR bands only, no VV/VH ratio")
+    parser.add_argument(
+        "--no-ratio",
+        action="store_true",
+        help="shorthand for --bands vv_vh; the two-arm question predates the C2 study",
+    )
+    parser.add_argument(
+        "--bands",
+        choices=[b.value for b in BandSelection],
+        default=None,
+        help=(
+            "input band stack for this arm of the modality-loss study (C2). "
+            "Overrides --no-ratio when both are given."
+        ),
+    )
     parser.add_argument("--no-augment", action="store_true")
     parser.add_argument("--amp", action="store_true", help="Mixed precision. Needs CUDA.")
     parser.add_argument("--resume", type=Path, default=None)
@@ -173,8 +192,13 @@ def main(argv: list[str] | None = None) -> int:
         train_chips = train_chips[: args.limit_chips]
         val_chips = val_chips[: max(2, args.limit_chips // 4)]
 
-    with_ratio = not args.no_ratio
-    bands = bands_for(with_ratio)
+    selection = (
+        BandSelection(args.bands)
+        if args.bands
+        else (BandSelection.VV_VH if args.no_ratio else BandSelection.VV_VH_RATIO)
+    )
+    with_ratio = selection
+    bands = selection.bands
     device = torch.device(args.device)
 
     print(f"fold {fold.name}: {fold.summary()}")
@@ -235,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  resumed from {args.resume} at epoch {start_epoch}")
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    tag = f"{fold.name}_{'sar_ratio' if with_ratio else 'sar'}"
+    tag = f"{fold.name}_{selection.tag}"
     best_path = args.output_dir / f"flood_unet_{tag}_best.pt"
     epochs_without_gain = 0
 

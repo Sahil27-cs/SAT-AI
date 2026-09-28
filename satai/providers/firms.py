@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import csv
 import io
+import urllib.error
+import urllib.request
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -34,7 +36,17 @@ from satai.providers.base import Provider, ProviderStatus, SearchQuery, SearchRe
 
 log = get_logger(__name__)
 
-__all__ = ["FIRMS_CAVEATS", "FIRMS_SOURCES", "FIRMSProvider", "FireDetection"]
+__all__ = [
+    "AREA_ARCHIVE_URL",
+    "FIRMS_CAVEATS",
+    "FIRMS_SOURCES",
+    "OPEN_PRODUCTS",
+    "OPEN_WINDOWS",
+    "FIRMSProvider",
+    "FireDetection",
+    "fetch_open_detections",
+    "open_archive_url",
+]
 
 FIRMS_BASE_URL = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
 
@@ -215,3 +227,101 @@ def _opt_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# The open regional archive
+# ---------------------------------------------------------------------------
+#
+# The FIRMS *API* needs a free MAP_KEY, which needs an account. The regional
+# near-real-time files do not: NASA publishes them as plain CSV over HTTPS, and
+# they are the same detections the API serves. That distinction is what lets
+# this project produce a real wildfire observation at all.
+#
+# The trade-off is stated rather than hidden: these files cover only a rolling
+# recent window, so they support "what is burning now" and not "what burned
+# during a named historical fire". A historical archive request does need the
+# key, and is recorded as a blocker rather than approximated with recent data.
+
+AREA_ARCHIVE_URL = "https://firms.modaps.eosdis.nasa.gov/data/active_fire/{product}/csv/{prefix}_{region}_{window}.csv"
+
+#: Products available without a key, and the filename prefix each one uses.
+OPEN_PRODUCTS: dict[str, str] = {
+    "noaa-20-viirs-c2": "J1_VIIRS_C2",
+    "noaa-21-viirs-c2": "J2_VIIRS_C2",
+    "suomi-npp-viirs-c2": "SUOMI_VIIRS_C2",
+    "modis-c6.1": "MODIS_C6_1",
+}
+
+#: Rolling windows NASA publishes. Nothing longer is available without the key.
+OPEN_WINDOWS: tuple[str, ...] = ("24h", "48h", "7d")
+
+
+def open_archive_url(product: str, region: str = "South_Asia", window: str = "7d") -> str:
+    if product not in OPEN_PRODUCTS:
+        raise ValidationError(
+            f"unknown FIRMS product {product!r}; open products: {', '.join(OPEN_PRODUCTS)}"
+        )
+    if window not in OPEN_WINDOWS:
+        raise ValidationError(
+            f"{window!r} is not published without a MAP_KEY; available: {', '.join(OPEN_WINDOWS)}"
+        )
+    return AREA_ARCHIVE_URL.format(
+        product=product, prefix=OPEN_PRODUCTS[product], region=region, window=window
+    )
+
+
+def fetch_open_detections(
+    bbox: tuple[float, float, float, float],
+    *,
+    product: str = "noaa-20-viirs-c2",
+    region: str = "South_Asia",
+    window: str = "7d",
+    timeout: float = 120.0,
+) -> tuple[list[FireDetection], dict[str, Any]]:
+    """Active-fire detections inside `bbox`, from the keyless regional archive.
+
+    Returns the detections and a provenance record. An empty list is a real
+    answer -- "nothing was detected in this window" -- and emphatically not
+    "nothing burned": the sensor sees a given pixel twice a day at best, cloud
+    blocks the thermal band, and a fire below the detection limit is invisible.
+    """
+    url = open_archive_url(product, region, window)
+    request = urllib.request.Request(url, headers={"User-Agent": "SAT-AI/0.5 (research)"})  # noqa: S310 - fixed https endpoint, not user input
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+            text = response.read().decode("utf-8", "replace")
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise ProviderError(f"could not fetch {url}: {exc}", provider="firms") from exc
+
+    min_lon, min_lat, max_lon, max_lat = bbox
+    detections: list[FireDetection] = []
+    total = 0
+    for row in csv.DictReader(io.StringIO(text)):
+        total += 1
+        parsed = _parse_row(row, source=product)
+        if parsed is None:
+            continue
+        if min_lon <= parsed.longitude <= max_lon and min_lat <= parsed.latitude <= max_lat:
+            detections.append(parsed)
+
+    provenance = {
+        "dataset": "NASA FIRMS active fire",
+        "product": product,
+        "region_file": region,
+        "window": window,
+        "source_kind": "observation",
+        "provider": "nasa_firms",
+        "url": url,
+        "retrieved_at": datetime.now(UTC).isoformat(),
+        "rows_in_file": total,
+        "rows_in_bbox": len(detections),
+        "requires_key": False,
+        "caveats": [
+            *FIRMS_CAVEATS,
+            "From the keyless rolling regional archive, which covers only a "
+            "recent window. A named historical fire needs the archive API and a "
+            "MAP_KEY, which this deployment does not have.",
+        ],
+    }
+    return detections, provenance

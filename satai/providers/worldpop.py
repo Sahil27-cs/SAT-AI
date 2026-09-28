@@ -28,6 +28,7 @@ settlement is sparse. Every artifact derived from it says so.
 
 from __future__ import annotations
 
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -117,33 +118,73 @@ def product_for(country: str, year: int = 2020) -> WorldPopProduct:
 
 
 def fetch_population(
-    product: WorldPopProduct, destination: Path, *, timeout: float = 300.0
+    product: WorldPopProduct,
+    destination: Path,
+    *,
+    timeout: float = 300.0,
+    attempts: int = 5,
+    chunk_bytes: int = 1 << 20,
 ) -> Path:
-    """Download the country raster, once.
+    """Download the country raster, once, resumably.
 
-    Downloaded whole rather than read as a remote window: WorldPop's server
-    does not support range requests, so `/vsicurl` cannot open it at all. The
-    files are a few megabytes, so this costs little and makes every later run
-    offline and reproducible.
+    Downloaded whole rather than read as a remote window: WorldPop's server does
+    not support range requests on a fresh connection in a way `/vsicurl` can
+    use, so GDAL cannot open the file remotely at all.
+
+    Streamed to disk in chunks, with resume on failure. India's raster is two
+    orders of magnitude larger than Nepal's, and reading it into memory in one
+    call failed with a connection reset partway through -- discarding everything
+    already transferred. A partial file is resumed with a Range request where the
+    server allows it, and restarted from zero where it does not.
     """
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists() and destination.stat().st_size > 0:
         log.info("worldpop raster already present", extra={"path": str(destination)})
         return destination
 
-    request = urllib.request.Request(  # noqa: S310 - fixed https endpoint, not user input
-        product.url, headers={"User-Agent": "SAT-AI/0.5 (research; open data)"}
-    )
     partial = destination.with_suffix(destination.suffix + ".part")
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
-            partial.write_bytes(response.read())
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        partial.unlink(missing_ok=True)
-        raise ProviderError(f"could not fetch {product.url}: {exc}", provider="worldpop") from exc
+    last: Exception | None = None
 
-    # Renamed only once the body is complete, so an interrupted download can
-    # never be mistaken for a valid raster on the next run.
+    for attempt in range(attempts):
+        have = partial.stat().st_size if partial.exists() else 0
+        headers = {"User-Agent": "SAT-AI/0.5 (research; open data)"}
+        if have:
+            headers["Range"] = f"bytes={have}-"
+
+        try:
+            request = urllib.request.Request(product.url, headers=headers)  # noqa: S310 - fixed https endpoint, not user input
+            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+                # A server that ignored the Range header sends 200 and the whole
+                # body; appending to it would corrupt the file.
+                resuming = have > 0 and response.status == 206
+                mode = "ab" if resuming else "wb"
+                if not resuming:
+                    have = 0
+                with partial.open(mode) as handle:
+                    while True:
+                        chunk = response.read(chunk_bytes)
+                        if not chunk:
+                            break
+                        handle.write(chunk)
+                        have += len(chunk)
+            break
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last = exc
+            log.warning(
+                "worldpop download interrupted",
+                extra={
+                    "attempt": attempt + 1,
+                    "bytes_so_far": partial.stat().st_size if partial.exists() else 0,
+                    "error": str(exc)[:120],
+                },
+            )
+            if attempt == attempts - 1:
+                raise ProviderError(
+                    f"could not fetch {product.url} after {attempts} attempts: {last}",
+                    provider="worldpop",
+                ) from exc
+            time.sleep(2.0 * (attempt + 1))
+
     partial.replace(destination)
     log.info(
         "worldpop raster downloaded",

@@ -267,6 +267,28 @@ class ChatResponse(BaseModel):
 #: than fetched: study areas are configuration and change on a pull request,
 #: not on a satellite revisit, so a network round trip would add a failure mode
 #: to data that is fixed at deploy time.
+_ANALYSES_PATH = Path(__file__).resolve().parent / "analyses.generated.json"
+_ANALYSES_CACHE: dict[str, Any] | None = None
+
+
+def analyses() -> dict[str, Any]:
+    """The catalogue of analyses that have actually been produced.
+
+    Generated from artifacts on disk by scripts/export_analyses.py. A missing or
+    unreadable file yields an empty catalogue rather than an error: "no analyses
+    are recorded" is a true and useful answer, and taking every endpoint down
+    because one generated file is absent is not.
+    """
+    global _ANALYSES_CACHE
+    if _ANALYSES_CACHE is None:
+        try:
+            _ANALYSES_CACHE = json.loads(_ANALYSES_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            log.error("analysis catalogue unreadable: %s", exc)
+            _ANALYSES_CACHE = {"study_areas": [], "explanations": [], "wildfire": None}
+    return _ANALYSES_CACHE
+
+
 _STUDY_AREAS_PATH = Path(__file__).resolve().parent / "study_areas.generated.json"
 _STUDY_AREAS_CACHE: list[dict[str, Any]] | None = None
 
@@ -522,6 +544,83 @@ async def list_study_areas() -> dict[str, Any]:
         ),
         "studyAreas": areas,
     }
+
+
+@app.get("/api/v1/analyses", tags=["analyses"])
+async def list_analyses(region: str | None = None, hazard: str | None = None) -> dict[str, Any]:
+    """Every analysis that has actually been produced, with its provenance.
+
+    This is the endpoint that distinguishes a configured study area from an
+    analysed one. Each entry carries where its input came from, which model ran,
+    when, and — where the analysis was validated — whether it passed.
+
+    An entry with `displayable: false` produced artifacts that did not survive
+    validation. The record is served so the failure is visible; the geometry is
+    not, because putting an unvalidated flood extent on a map is the specific
+    thing this project exists to argue against.
+    """
+    catalogue = analyses()
+    areas = catalogue.get("study_areas", [])
+    if region:
+        areas = [a for a in areas if a["id"] == region]
+        if not areas:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "region_not_configured",
+                    "message": f"{region!r} is not a SAT-AI study area.",
+                },
+            )
+    if hazard:
+        areas = [
+            {**a, "analyses": [x for x in a["analyses"] if x.get("hazard") == hazard]}
+            for a in areas
+        ]
+
+    return {
+        "generated_at": catalogue.get("generated_at"),
+        "status_vocabulary": catalogue.get("status_vocabulary", {}),
+        "count": sum(len(a["analyses"]) for a in areas),
+        "study_areas": areas,
+        "caveat": (
+            "Produced analyses only. A study area with no analyses is configured "
+            "and nothing more, and an analysis with displayable=false did not "
+            "pass its validation."
+        ),
+    }
+
+
+@app.get("/api/v1/explanations", tags=["explainability"])
+async def list_explanations() -> dict[str, Any]:
+    """Per-band attribution for the flood model.
+
+    MODEL EXPLANATION, not an explanation of a flood. Attribution describes what
+    the network leaned on, which may be because a band carries signal or because
+    it correlates with something that does.
+    """
+    catalogue = analyses()
+    return {
+        "generated_at": catalogue.get("generated_at"),
+        "count": len(catalogue.get("explanations", [])),
+        "explanations": catalogue.get("explanations", []),
+        "caveat": (
+            "Attribution describes what the model used, not physical causation, "
+            "and not the natural-language summary the assistant produces."
+        ),
+    }
+
+
+@app.get("/api/v1/wildfire/detections", tags=["hazards"])
+async def wildfire_detections() -> dict[str, Any]:
+    """Active-fire detections over the study areas, from the latest run."""
+    catalogue = analyses()
+    wildfire = catalogue.get("wildfire")
+    if not wildfire:
+        return {
+            "available": False,
+            "reason": "No active-fire run has been recorded in this deployment.",
+        }
+    return {"available": True, **wildfire}
 
 
 @app.get("/api/v1/regions", response_model=list[Region], tags=["regions"])

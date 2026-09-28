@@ -480,3 +480,81 @@ def test_the_health_count_matches_the_catalogue_endpoint(client: Any) -> None:
     health = client.get("/health").json()
     catalogue = client.get("/api/v1/study-areas").json()
     assert int(health["checks"]["study_areas"]) == catalogue["count"]
+
+
+# --- the analysis catalogue --------------------------------------------------
+
+
+def test_analyses_distinguishes_configured_from_analysed(client: Any) -> None:
+    """A study area with no analyses must not look like one with results.
+
+    This endpoint exists because the dashboard previously showed seven areas
+    and no way to tell which of them anything had actually been run over.
+    """
+    body = client.get("/api/v1/analyses").json()
+
+    assert body["count"] == sum(len(a["analyses"]) for a in body["study_areas"])
+    for area in body["study_areas"]:
+        if not area["analyses"]:
+            assert area["status"] == "CONFIGURED"
+
+
+def test_an_unvalidated_analysis_is_recorded_but_not_displayable(client: Any) -> None:
+    """The Nepal flood run wrote every artifact and failed the distribution gate.
+
+    Serving the record makes the failure visible; withholding the geometry keeps
+    an unvalidated flood extent off the map. Both halves matter.
+    """
+    body = client.get("/api/v1/analyses").json()
+    analyses = [a for area in body["study_areas"] for a in area["analyses"]]
+    unvalidated = [a for a in analyses if a.get("displayable") is False]
+
+    for analysis in unvalidated:
+        assert analysis["status"] != "ANALYSIS COMPLETE"
+        assert analysis["withheld_reason"]
+        assert "geometry" not in analysis or not analysis.get("geometry")
+
+
+def test_every_model_analysis_carries_its_provenance(client: Any) -> None:
+    """Source, acquisition, model, version and processing time, or it is not servable."""
+    body = client.get("/api/v1/analyses").json()
+    for area in body["study_areas"]:
+        for analysis in area["analyses"]:
+            if analysis.get("kind") != "model_inference":
+                continue
+            observation = analysis["observation"]
+            assert observation["scene_id"]
+            assert observation["acquired_at"]
+            assert observation["provider"]
+            assert analysis["model"]["version"]
+            assert analysis["processing"]["processed_at"]
+
+
+def test_an_unknown_region_is_a_404_not_an_empty_list(client: Any) -> None:
+    response = client.get("/api/v1/analyses?region=atlantis")
+    assert response.status_code == 404
+    assert response.json()["detail"]["error"] == "region_not_configured"
+
+
+def test_explanations_are_labelled_as_model_explanations(client: Any) -> None:
+    """Attribution is about the model, not about the flood."""
+    body = client.get("/api/v1/explanations").json()
+    assert "causation" in body["caveat"] or "not physical" in body["caveat"]
+    for explanation in body["explanations"]:
+        assert explanation["source_kind"] == "derived"
+        assert explanation["model_version"]
+
+
+def test_wildfire_detections_never_report_zero_as_no_fire(client: Any) -> None:
+    """The most likely way this endpoint gets misread.
+
+    A sensor sees a pixel twice a day at best, so an empty window is not an
+    empty landscape, and the payload has to say so where a reader will see it.
+    """
+    body = client.get("/api/v1/wildfire/detections").json()
+    if not body.get("available"):
+        pytest.skip("no active-fire run recorded in this checkout")
+
+    caveats = " ".join(body["caveats"]).lower()
+    assert "does not mean nothing burned" in caveats or "not mean nothing burned" in caveats
+    assert body["not_a_prediction"]

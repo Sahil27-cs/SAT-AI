@@ -58,7 +58,7 @@ except ImportError:  # pragma: no cover - outside an installed package
 import numpy as np
 import torch
 
-from ml.flood.dataset import bands_for, build_reader, stack_with_ratio
+from ml.flood.dataset import BandSelection, build_reader, selection_for_bands, stack_with_ratio
 from ml.flood.evaluate import load_checkpoint
 
 DEFAULT_OUT = REPO_ROOT / "data" / "processed" / "flood"
@@ -171,7 +171,7 @@ def predict_chip(
     chip: Any,
     bands: tuple[str, ...],
     device: torch.device,
-    with_ratio: bool,
+    with_ratio: bool | BandSelection,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     """Probability, validity mask and the source raster profile for one chip."""
     import rasterio
@@ -206,8 +206,9 @@ def main(argv: list[str] | None = None) -> int:
 
     device = torch.device(args.device)
     model, normalizer, payload = load_checkpoint(args.checkpoint, device)
-    with_ratio = "vv_vh_ratio" in payload["bands"]
-    bands = bands_for(with_ratio)
+    selection = selection_for_bands(payload["bands"])
+    with_ratio = selection
+    bands = selection.bands
 
     reader = build_reader(args.chips)
     chips = reader.available(reader.discover())
