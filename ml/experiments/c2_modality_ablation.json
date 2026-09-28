@@ -1,12 +1,42 @@
 {
   "experiment": "C2_modality_ablation",
-  "run_at": "2026-09-26T19:04:10.085453+00:00",
+  "run_at": "2026-09-28T13:07:23.518517+00:00",
   "status": "PARTIALLY EXECUTED",
   "fold": "loro_india",
   "test_region": "India",
   "protocol": "Leave-one-region-out. Every arm shares the seed, schedule, augmentation, training fold and selection region; they differ only in the input band stack.",
   "reference_arm": "sar_ratio",
   "executed": {
+    "vv_only": {
+      "description": "Sentinel-1 VV only",
+      "bands": [
+        "vv_db"
+      ],
+      "n_bands": 1,
+      "iou": 0.5279,
+      "dice": 0.691,
+      "f1": 0.691,
+      "precision": 0.7343,
+      "recall": 0.6525,
+      "specificity": 0.9667,
+      "accuracy": 0.9278,
+      "per_chip_iou_median": 0.2525
+    },
+    "vh_only": {
+      "description": "Sentinel-1 VH only",
+      "bands": [
+        "vh_db"
+      ],
+      "n_bands": 1,
+      "iou": 0.5254,
+      "dice": 0.6889,
+      "f1": 0.6889,
+      "precision": 0.763,
+      "recall": 0.6279,
+      "specificity": 0.9725,
+      "accuracy": 0.9298,
+      "per_chip_iou_median": 0.1896
+    },
     "sar": {
       "description": "Sentinel-1 VV + VH",
       "bands": [
@@ -42,6 +72,16 @@
     }
   },
   "degradation_vs_reference": {
+    "vv_only": {
+      "delta_iou": 0.0049,
+      "delta_f1": 0.0042,
+      "relative_iou": 0.0094
+    },
+    "vh_only": {
+      "delta_iou": 0.0024,
+      "delta_f1": 0.0021,
+      "relative_iou": 0.0046
+    },
     "sar": {
       "delta_iou": -0.0019,
       "delta_f1": -0.0017,
@@ -53,10 +93,12 @@
     "sar_dem": "No DEM or HAND raster ships with Sen1Floods11. Needs a Copernicus DEM GLO-30 pull per chip footprint plus a HAND derivation.",
     "full": "Blocked by both of the above."
   },
-  "finding": "Removing the derived VV/VH dB ratio band costs 0.0019 IoU on the held-out region -- a difference far smaller than the spread between regions, and smaller than what a different seed would plausibly produce. On this dataset the ratio band carries no information the network cannot already derive from VV and VH, which it receives separately.",
+  "finding": "All 4 executed arms fall within 0.0068 IoU of each other. The best is vv_only at 0.5279 with 1 band(s); the worst is sar at 0.5211. The fullest stack, sar_ratio with 3 bands, scores 0.5230 -- lower than a single VV polarisation. On this dataset, with this architecture, adding SAR modalities beyond one polarisation produces no measurable benefit. The spread is smaller than the per-chip variance and, on a single seed per arm, smaller than what seed variation would plausibly produce -- so the defensible claim is that these arms are indistinguishable, not that fewer bands are better.",
+  "spread_across_executed_arms_iou": 0.0068,
   "caveats": [
-    "Two arms, not five. The rainfall and terrain arms need ancillary rasters that have not been acquired, and are reported as blocked rather than approximated.",
-    "Single seed per arm. With a difference this small, the honest statement is that the arms are indistinguishable at this sample size, not that one is better. Separating them would need repeated seeds and a confidence interval.",
-    "The precision/recall split differs more than the IoU does: the SAR-only arm is more precise and less sensitive. That is a real difference in operating behaviour even where the summary metric agrees, and it matters for a flood product where a missed inundation and a false one carry different costs."
+    "4 arms, not five. The rainfall and terrain arms need ancillary rasters that have not been acquired, and are reported as blocked rather than approximated.",
+    "Single seed per arm. With differences this small the honest statement is that the arms are indistinguishable at this sample size, not that one is better. Separating them would need repeated seeds and a confidence interval, and that measurement has not been made.",
+    "The precision/recall split differs far more than the IoU does -- the two-polarisation arm is the most precise and the least sensitive of the four. That is a real difference in operating behaviour even where the summary metric agrees, and it matters for a flood product where a missed inundation and a false one carry different costs.",
+    "Every arm shares one architecture. A larger model, or one with a pretrained encoder, might extract something from the extra bands that this one cannot. The result is about this model on this dataset, not about SAR polarimetry in general."
   ]
 }

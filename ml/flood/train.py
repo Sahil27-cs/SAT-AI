@@ -69,7 +69,13 @@ from ml.flood.dataset import (
 from ml.flood.losses import FloodLoss
 from ml.flood.model import UNet, UNetSpec
 from satai.ml.metrics import SegmentationMetrics, aggregate, evaluate
-from satai.preprocessing.splits import Fold, leave_one_region_out
+from satai.preprocessing.splits import (
+    Fold,
+    leave_one_region_out,
+    load_split_file,
+    official_fold,
+    parse_chip_name,
+)
 
 DEFAULT_DATA = REPO_ROOT / "data" / "raw" / "sen1floods11"
 DEFAULT_OUT = REPO_ROOT / "models" / "flood"
@@ -132,19 +138,59 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+#: Where the shipped split CSVs land. Downloaded separately from the chips,
+#: because scripts/download_sen1floods11.py flattens the archive to the two
+#: directories the LORO protocol needs and the official splits are not one.
+OFFICIAL_SPLIT_FILES = {
+    "train": "flood_train_data.csv",
+    "val": "flood_valid_data.csv",
+    "test": "flood_test_data.csv",
+}
+
+
 def select_fold(data_root: Path, fold_name: str) -> Fold:
-    """Build the requested leave-one-region-out fold from what is on disk."""
+    """Build the requested fold from what is on disk.
+
+    ``official`` is Sen1Floods11's own chip-level split, and it is the
+    **secondary** protocol (ADR-009): it is not region-disjoint, so chips from
+    one flood event straddle train and test. That is exactly why experiment 3
+    wants it — the gap between this number and the LORO number is the quantity
+    of interest, and it cannot be measured without producing both.
+    """
     reader = build_reader(data_root)
     chips = reader.available(reader.discover())
     if not chips:
         raise SystemExit(
             f"no chips under {data_root}. Run: python scripts/download_sen1floods11.py"
         )
+
+    if fold_name == "official":
+        splits_dir = data_root / "splits"
+        missing = [
+            name for name in OFFICIAL_SPLIT_FILES.values() if not (splits_dir / name).is_file()
+        ]
+        if missing:
+            raise SystemExit(
+                f"official splits not found under {splits_dir}. Missing: "
+                f"{', '.join(missing)}. They live in the same bucket as the chips, "
+                f"under v1.1/splits/flood_handlabeled/."
+            )
+        available = {c.key for c in chips}
+        names = {
+            partition: [
+                n
+                for n in load_split_file(splits_dir / filename)
+                if parse_chip_name(n).key in available
+            ]
+            for partition, filename in OFFICIAL_SPLIT_FILES.items()
+        }
+        return official_fold(names["train"], names["val"], names["test"])
+
     for fold in leave_one_region_out(chips):
         if fold.name == fold_name:
             return fold
-    available = ", ".join(f.name for f in leave_one_region_out(chips))
-    raise SystemExit(f"no fold named {fold_name!r}. Available: {available}")
+    available_names = ", ".join(f.name for f in leave_one_region_out(chips))
+    raise SystemExit(f"no fold named {fold_name!r}. Available: official, {available_names}")
 
 
 @torch.no_grad()

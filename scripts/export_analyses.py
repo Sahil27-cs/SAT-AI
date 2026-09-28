@@ -255,6 +255,166 @@ def xai_entries() -> list[dict[str, Any]]:
     return entries
 
 
+def experiment_register() -> list[dict[str, Any]]:
+    """The four contributions, with whatever each has actually produced.
+
+    Built from report files rather than read from the database. The database
+    rows are seeded configuration and went stale the moment an experiment ran:
+    the deployment still reported two of ten executed after the flood model was
+    trained, evaluated, ablated four ways and explained. Writing to that table
+    needs a service key this deployment does not have, and a number nobody can
+    correct is worse than a number derived from the artifacts themselves.
+    """
+    register: list[dict[str, Any]] = []
+
+    # --- C1: grounded tool invocation ---------------------------------------
+    validator = _load(EXPERIMENTS / "validator_validation" / "validator_validation.json")
+    register.append(
+        {
+            "id": "C1",
+            "title": "Grounded tool invocation and refusal",
+            "hypothesis": (
+                "A language layer constrained to tool output can be held to "
+                "stating only values traceable to a tool result, and made to "
+                "refuse questions outside its competence."
+            ),
+            "instrument": {
+                "report": relative_to_repo(EXPERIMENTS / "validator_validation")
+                if validator
+                else None,
+                "detection_accuracy": (validator or {}).get("headline"),
+                "n_cases": (validator or {}).get("n_cases"),
+                "status": "EXECUTED" if validator else "NOT RUN",
+            },
+            "status": "INSTRUMENT VALIDATED; BENCHMARK NOT RUN",
+            "blocker": (
+                "The 28-question benchmark has not been run against the live "
+                "model. The loop, the validator and the audit log all exist."
+            ),
+            "caveats": [
+                "The validated instrument measures detection on constructed "
+                "failure modes, not coverage of all possible ones.",
+            ],
+        }
+    )
+
+    # --- C2: modality loss ---------------------------------------------------
+    c2 = _load(EXPERIMENTS / "c2_modality_ablation.json")
+    if c2:
+        register.append(
+            {
+                "id": "C2",
+                "title": "Degradation under induced modality loss",
+                "hypothesis": (
+                    "Withholding input modalities degrades a flood model by an "
+                    "amount worth measuring, and the curve is not published for "
+                    "this task."
+                ),
+                "dataset": "Sen1Floods11 v1.1 HandLabeled",
+                "split": c2.get("protocol"),
+                "test_region": c2.get("test_region"),
+                "arms_executed": [
+                    {
+                        "arm": arm,
+                        "bands": values["n_bands"],
+                        "iou": values["iou"],
+                        "f1": values["f1"],
+                        "precision": values["precision"],
+                        "recall": values["recall"],
+                    }
+                    for arm, values in sorted(
+                        (c2.get("executed") or {}).items(), key=lambda kv: kv[1]["n_bands"]
+                    )
+                ],
+                "arms_blocked": c2.get("blocked", {}),
+                "spread_iou": c2.get("spread_across_executed_arms_iou"),
+                "finding": c2.get("finding"),
+                "status": c2.get("status", "PARTIALLY EXECUTED"),
+                "report": relative_to_repo(EXPERIMENTS / "c2_modality_ablation.json"),
+                "caveats": c2.get("caveats", []),
+            }
+        )
+
+    # --- C3: rural to urban --------------------------------------------------
+    c3 = _load(EXPERIMENTS / "c3_urban_domain_shift.json")
+    register.append(
+        {
+            "id": "C3",
+            "title": "Rural-to-urban SAR transfer gap in India",
+            "hypothesis": (
+                "A flood model trained on rural Indian chips degrades by a "
+                "measurable and unpublished amount on urban Indian imagery."
+            ),
+            "status": (c3 or {}).get("status", "BLOCKED"),
+            "what_this_is": (c3 or {}).get("what_this_is"),
+            "what_this_is_not": (c3 or {}).get("what_this_is_not"),
+            "distribution_gate": (c3 or {}).get("distribution_gate"),
+            "expected_direction": (c3 or {}).get("expected_direction"),
+            "blocker": (c3 or {}).get(
+                "blocker", {"missing": "labelled urban Indian flood imagery"}
+            ),
+            "report": relative_to_repo(EXPERIMENTS / "c3_urban_domain_shift.json") if c3 else None,
+            "caveats": (c3 or {}).get("caveats", []),
+        }
+    )
+
+    # --- C4: risk sensitivity -------------------------------------------------
+    c4 = _load(EXPERIMENTS / "risk_sensitivity" / "structural_summary.json")
+    register.append(
+        {
+            "id": "C4",
+            "title": "Sensitivity-analysed multi-hazard risk",
+            "hypothesis": (
+                "A risk formulation's free exponents can be turned from an "
+                "arbitrary choice into a reported, inspectable result."
+            ),
+            "status": "EXECUTED" if c4 else "NOT RUN",
+            "headline": (c4 or {}).get("headline") or (c4 or {}).get("interpretation"),
+            "report": relative_to_repo(EXPERIMENTS / "risk_sensitivity") if c4 else None,
+            "caveats": [
+                "One-at-a-time holds the other exponents fixed and does not explore interactions.",
+            ],
+        }
+    )
+
+    # --- experiment 3: the split-protocol gap ---------------------------------
+    official = _load(EXPERIMENTS / "flood_unet" / "test_official_sar_ratio.json")
+    loro = _load(EXPERIMENTS / "flood_unet" / "test_loro_india_sar_ratio.json")
+    entry: dict[str, Any] = {
+        "id": "EXP3",
+        "title": "Official-split versus leave-one-region-out",
+        "hypothesis": (
+            "Sen1Floods11's shipped splits are not region-disjoint, so a score "
+            "measured on them overstates generalisation to an unseen region."
+        ),
+        "status": "EXECUTED" if (official and loro) else "PARTIALLY EXECUTED",
+    }
+    if loro:
+        entry["loro_iou"] = loro["headline"]["iou"]
+        entry["loro_test_regions"] = loro.get("test_regions") or ["India"]
+    if official:
+        entry["official_iou"] = official["headline"]["iou"]
+        entry["gap_iou"] = round(official["headline"]["iou"] - loro["headline"]["iou"], 4)
+        entry["finding"] = (
+            f"The official chip-level split scores {official['headline']['iou']:.4f} "
+            f"against {loro['headline']['iou']:.4f} region-disjoint, a gap of "
+            f"{entry['gap_iou']:+.4f} IoU. Chips from one flood event straddle "
+            f"train and test in the official split, so that difference is the "
+            f"cost of measuring interpolation within an event and calling it "
+            f"generalisation."
+        )
+    else:
+        entry["blocker"] = "The official-split training run has not completed."
+    entry["caveats"] = [
+        "Both arms share seed, schedule, architecture and band stack, so the "
+        "difference is attributable to the split protocol.",
+        "Single seed per arm.",
+    ]
+    register.append(entry)
+
+    return register
+
+
 def main() -> int:
     registry = load_aoi_registry(REPO_ROOT / "configs" / "aoi.yaml")
     flood = flood_scene_entries()
@@ -320,6 +480,7 @@ def main() -> int:
         "study_areas": areas,
         "wildfire": wildfire,
         "explanations": xai,
+        "experiments": experiment_register(),
     }
 
     for destination in DESTINATIONS:
@@ -329,7 +490,12 @@ def main() -> int:
     print(f"  {'study area':<24} {'status':<20} analyses")
     for area in areas:
         print(f"  {area['id']:<24} {area['status']:<20} {len(area['analyses'])}")
+    register = payload["experiments"]
+    executed = [e for e in register if "EXECUTED" in str(e.get("status", ""))]
     print(f"\n  {len(xai)} explanation report(s)")
+    print(f"  {len(register)} registered experiments, {len(executed)} with executed results")
+    for entry in register:
+        print(f"    {entry['id']:<6} {entry['status']}")
     for destination in DESTINATIONS:
         size = destination.stat().st_size
         print(f"  written {relative_to_repo(destination)} ({size / 1024:.1f} KB)")

@@ -82,6 +82,34 @@ ARMS: tuple[tuple[str, str, str | None], ...] = (
 )
 
 
+def _finding(executed: dict[str, dict[str, Any]], spread: float) -> str:
+    """State what the executed arms show, computed rather than asserted.
+
+    Written as a function because the conclusion changed when the two
+    single-polarisation arms landed: a sentence about the ratio band was true of
+    two arms and became the least interesting thing about four.
+    """
+    ranked = sorted(executed.items(), key=lambda kv: kv[1]["iou"], reverse=True)
+    best_arm, best = ranked[0]
+    worst_arm, worst = ranked[-1]
+    fullest = max(executed.items(), key=lambda kv: kv[1]["n_bands"])
+
+    return (
+        f"All {len(executed)} executed arms fall within {spread:.4f} IoU of each "
+        f"other. The best is {best_arm} at {best['iou']:.4f} with "
+        f"{best['n_bands']} band(s); the worst is {worst_arm} at "
+        f"{worst['iou']:.4f}. The fullest stack, {fullest[0]} with "
+        f"{fullest[1]['n_bands']} bands, scores {fullest[1]['iou']:.4f} -- lower "
+        f"than a single {best_arm.split('_')[0].upper()} polarisation. "
+        "On this dataset, with this architecture, adding SAR modalities beyond "
+        "one polarisation produces no measurable benefit. The spread is smaller "
+        "than the per-chip variance and, on a single seed per arm, smaller than "
+        "what seed variation would plausibly produce -- so the defensible claim "
+        "is that these arms are indistinguishable, not that fewer bands are "
+        "better."
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fold", default="loro_india")
@@ -112,8 +140,11 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"C2 needs at least two executed arms to compare; have {sorted(executed)}")
 
     # The fullest executed arm is the reference; every other arm is reported as
-    # its degradation. On this dataset two of them are negative, which is the
-    # result rather than a problem with the framing.
+    # its degradation. On this dataset the "degradations" are mostly negative --
+    # arms with fewer bands score higher -- which is the result rather than a
+    # problem with the framing.
+    ious = [values["iou"] for values in executed.values()]
+    spread = round(max(ious) - min(ious), 4)
     reference_arm = max(executed, key=lambda a: executed[a]["n_bands"])
     reference = executed[reference_arm]
 
@@ -142,27 +173,27 @@ def main(argv: list[str] | None = None) -> int:
         "executed": executed,
         "degradation_vs_reference": degradation,
         "blocked": blocked,
-        "finding": (
-            "Removing the derived VV/VH dB ratio band costs "
-            f"{abs(degradation['sar']['delta_iou']):.4f} IoU on the held-out region "
-            "-- a difference far smaller than the spread between regions, and "
-            "smaller than what a different seed would plausibly produce. On this "
-            "dataset the ratio band carries no information the network cannot "
-            "already derive from VV and VH, which it receives separately."
-        ),
+        "finding": _finding(executed, spread),
+        "spread_across_executed_arms_iou": spread,
         "caveats": [
-            "Two arms, not five. The rainfall and terrain arms need ancillary "
-            "rasters that have not been acquired, and are reported as blocked "
-            "rather than approximated.",
-            "Single seed per arm. With a difference this small, the honest "
+            f"{len(executed)} arms, not five. The rainfall and terrain arms need "
+            "ancillary rasters that have not been acquired, and are reported as "
+            "blocked rather than approximated.",
+            "Single seed per arm. With differences this small the honest "
             "statement is that the arms are indistinguishable at this sample "
             "size, not that one is better. Separating them would need repeated "
-            "seeds and a confidence interval.",
-            "The precision/recall split differs more than the IoU does: the "
-            "SAR-only arm is more precise and less sensitive. That is a real "
-            "difference in operating behaviour even where the summary metric "
-            "agrees, and it matters for a flood product where a missed "
-            "inundation and a false one carry different costs.",
+            "seeds and a confidence interval, and that measurement has not been "
+            "made.",
+            "The precision/recall split differs far more than the IoU does -- "
+            "the two-polarisation arm is the most precise and the least "
+            "sensitive of the four. That is a real difference in operating "
+            "behaviour even where the summary metric agrees, and it matters for "
+            "a flood product where a missed inundation and a false one carry "
+            "different costs.",
+            "Every arm shares one architecture. A larger model, or one with a "
+            "pretrained encoder, might extract something from the extra bands "
+            "that this one cannot. The result is about this model on this "
+            "dataset, not about SAR polarimetry in general.",
         ],
     }
 
