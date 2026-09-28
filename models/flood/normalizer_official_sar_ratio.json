@@ -1,0 +1,44 @@
+{
+  "fold": "official",
+  "bands": {
+    "vh_db": {
+      "band": "vh_db",
+      "lower": -31.4979305267334,
+      "upper": -10.472318649291992,
+      "mean": -17.26994495200525,
+      "std": 4.383794386997961,
+      "lower_percentile": 2.0,
+      "upper_percentile": 98.0,
+      "n_samples": 27545425,
+      "n_valid": 27545425,
+      "fitted_on_fold": "official",
+      "fitted_on_partition": "train"
+    },
+    "vv_db": {
+      "band": "vv_db",
+      "lower": -22.492000579833984,
+      "upper": -3.6973138904571536,
+      "mean": -10.481944254657565,
+      "std": 3.878589715677476,
+      "lower_percentile": 2.0,
+      "upper_percentile": 98.0,
+      "n_samples": 27545425,
+      "n_valid": 27545425,
+      "fitted_on_fold": "official",
+      "fitted_on_partition": "train"
+    },
+    "vv_vh_ratio": {
+      "band": "vv_vh_ratio",
+      "lower": 0.5547770690917968,
+      "upper": 14.89390670776367,
+      "mean": 6.808307872930658,
+      "std": 3.1688415152614033,
+      "lower_percentile": 2.0,
+      "upper_percentile": 98.0,
+      "n_samples": 27545425,
+      "n_valid": 27545425,
+      "fitted_on_fold": "official",
+      "fitted_on_partition": "train"
+    }
+  }
+}

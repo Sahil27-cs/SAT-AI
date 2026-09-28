@@ -373,7 +373,10 @@ def main(argv: list[str] | None = None) -> int:
     manifest = {
         "model": "flood_unet",
         "fold": fold.name,
-        "protocol": "leave_one_region_out",
+        # From the fold, not hardcoded. The official-split run recorded
+        # itself as leave_one_region_out, which is the one field a reader
+        # would use to decide whether a number is region-disjoint.
+        "protocol": str(fold.protocol),
         "region_disjoint": fold.is_region_disjoint,
         "test_regions": list(fold.test_regions),
         "val_regions": list(fold.val_regions),
