@@ -163,6 +163,9 @@ module = [
     # imported inside the function that needs it so the module stays importable
     # where only the checkpoint matters.
     "onnxruntime.*",
+    # Pillow writes the map overlays in the batch plane (ml/hazards/overlay.py)
+    # and, like rasterio beside it, is not installed in CI's Python jobs.
+    "PIL.*",
 ]
 ignore_missing_imports = true
 
