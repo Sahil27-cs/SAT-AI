@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {
   API_URL, ChatReply, Experiment, HazardResult, Region, SOURCE_KIND_LABEL,
-  Unavailable, askAgent, formatAge, getExperiments, getHazard, getHealth,
+  Unavailable, answeredBy, askAgent, formatAge, getExperiments, getHazard, getHealth,
   getRegions, isUnavailable,
 } from '@/lib/api';
 import {
@@ -39,7 +39,7 @@ const SECTIONS = [
   { group: 'Monitoring', items: [['overview','Overview'],['map','Risk Map'],['flood','Flood'],
     ['wildfire','Wildfire'],['cyclone','Cyclone / Extreme Weather'],['damage','Damage Assessment']] },
   { group: 'Analysis', items: [['xai','Explainable AI'],['warning','Early Warning'],
-    ['historical','Historical Analysis'],['assistant','AI Assistant']] },
+    ['historical','Historical Analysis'],['assistant','Flood Assistant']] },
   { group: 'Research', items: [['research','Research & Methodology'],['about','About & Limitations']] },
 ] as const;
 
@@ -314,7 +314,9 @@ function Assistant({
       inside the geospatial system rather than beside it. */
   onMapAction?: (regionId: string, layers: string[]) => void;
 }) {
-  const [log, setLog] = useState<{ role: 'user' | 'agent'; text: string; meta?: ChatReply }[]>([]);
+  const [log, setLog] = useState<
+    { role: 'user' | 'agent' | 'error'; text: string; meta?: ChatReply }[]
+  >([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -330,18 +332,18 @@ function Assistant({
       const action = reply.map_actions?.[reply.map_actions.length - 1];
       if (action && onMapAction) onMapAction(action.region, action.activate_layers);
     } catch (e) {
-      setLog((l) => [...l, { role: 'agent', text: `The agent could not be reached: ${(e as Error).message}` }]);
+      setLog((l) => [...l, { role: 'error', text: (e as Error).message }]);
     } finally { setBusy(false); }
   }, [busy, region, onMapAction]);
 
   return (
     <>
-      <h2>AI Assistant</h2>
+      <h2>SAT-AI Flood Assistant</h2>
       <p className="lede">
-        Every project-specific value in a reply comes from a tool call against the serving plane.
-        A validator re-extracts each number from the generated text and rejects the response if it
-        is not traceable to a tool result — that measured violation rate is this project&apos;s
-        primary research contribution.
+        Ask about the flood model, its data, its scores and the scenes it has been run on. Every
+        project-specific value in a reply comes from a tool call against the serving plane, and a
+        validator rejects any reply whose numbers are not traceable to a tool result. Flood only:
+        wildfire, cyclone and earthquake questions are out of scope here.
       </p>
       <Disclaimer />
 
@@ -353,7 +355,7 @@ function Assistant({
         </div>
       ) : (
         <div className="panel">
-          <div className="panel-title">Try — including questions it must refuse</div>
+          <div className="panel-title">Try: including questions it must refuse</div>
           <div>{SAMPLE_QUESTIONS.map((q) => (
             <button key={q} className="chip" onClick={() => send(q)}>{q}</button>))}</div>
 
@@ -363,18 +365,21 @@ function Assistant({
           <div className="chat-log" style={{ marginTop: 14 }} aria-live="polite" aria-atomic="false">
             {log.length === 0 && (
               <div className="muted" style={{ padding: '30px 0', textAlign: 'center' }}>
-                Ask about a study area, or try one of the refusal cases above.
+                Ask about the flood model, or try one of the refusal cases above.
               </div>
             )}
             {log.map((m, i) => (
               <div key={i} className={`msg ${m.role}`}>
-                <div className="who">{m.role === 'user' ? 'You' : 'SAT-AI'}</div>
+                <div className="who">
+                  {m.role === 'user' ? 'You' : m.role === 'error' ? 'Not answered' : 'SAT-AI'}
+                </div>
                 <div className="body">{m.text}</div>
                 {m.meta && (
                   <div className="meta">
                     <span>agent: {m.meta.agent}</span>
                     <span>route: {m.meta.route_method} ({m.meta.route_confidence})</span>
                     <span>tools: {m.meta.tools_called.join(' → ') || 'none'}</span>
+                    {answeredBy(m.meta) && <span>model: {answeredBy(m.meta)}</span>}
                     {m.meta.map_actions?.length > 0 && (
                       <span style={{ color: 'var(--accent)' }}>
                         map → {m.meta.map_actions[m.meta.map_actions.length - 1].region}
@@ -387,7 +392,11 @@ function Assistant({
                 )}
               </div>
             ))}
-            {busy && <div className="muted">Thinking…</div>}
+            {busy && (
+              <div className="muted" role="status">
+                Checking SAT-AI&apos;s flood tools… this can take up to a minute.
+              </div>
+            )}
           </div>
 
           {/* A real form, so Enter submits natively and assistive technology
@@ -398,11 +407,11 @@ function Assistant({
             onSubmit={(e) => { e.preventDefault(); send(input); }}
           >
             <label className="sr-only" htmlFor="assistant-input">
-              Ask the SAT-AI assistant about a study area
+              Ask the SAT-AI Flood Assistant a question
             </label>
             <input id="assistant-input" name="question" value={input} disabled={busy}
               autoComplete="off"
-              placeholder={`Ask about ${regions.find((r) => r.id === region)?.name ?? 'a study area'}…`}
+              placeholder="Ask about the flood model, its metrics or the Nepal scene…"
               onChange={(e) => setInput(e.target.value)} />
             <button className="primary" type="submit" disabled={busy || !input.trim()}>Ask</button>
           </form>

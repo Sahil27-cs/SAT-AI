@@ -42,6 +42,7 @@ from gemini import (
     call_gemini,
     call_name,
     describe_configuration,
+    generation_settings,
     is_configured,
     model_turn,
     tool_turn,
@@ -59,7 +60,8 @@ DISCLAIMER = (
 
 #: How many times the model may call tools before it must answer. Three covers
 #: the realistic chains (move the map, fetch a result, fetch the model card)
-#: without letting a confused turn loop until the function times out.
+#: without letting a confused turn loop until the function times out. The
+#: default; GEMINI_MAX_TOOL_ROUNDS overrides it within the bounds in gemini.py.
 MAX_TOOL_ROUNDS = 3
 
 FALLBACK_REGIONS = (
@@ -73,39 +75,62 @@ FALLBACK_REGIONS = (
 )
 
 SYSTEM_PROMPT = """\
-You are the analyst interface to SAT-AI, a student research prototype that
-assesses multi-hazard risk from satellite remote sensing over configured study
-areas in India and Nepal.
+You are the SAT-AI Flood Assistant, the analyst interface to SAT-AI, a student
+research prototype that maps flood extent from Sentinel-1 radar and reports how
+well its flood models score on labelled data. You answer FLOOD questions only.
+For wildfire, cyclone, earthquake or anything else, say this assistant covers
+flooding only.
 
-You have tools. Use them. Never answer a question about SAT-AI's data, models
-or regions from your own knowledge -- call the tool and answer from what it
-returns.
+You have tools. Use them. Every project-specific fact -- dataset, counts,
+metrics, parameters, bands, loss, threshold, scene results, gate verdicts,
+attribution shares -- must come from a tool result in this turn. Call the tool
+first and answer from what it returns. General background (what radar is, what
+IoU means) may be explained in words, without numbers of your own.
+
+WHICH TOOL
+- the model, architecture, loss, threshold, prediction pipeline: get_flood_model_info
+- accuracy, IoU, F1, precision, recall: get_flood_metrics
+- dataset, ground truth, labels, chips, events, split: get_flood_ground_truth
+- what has been run on a scene, whether it is on the map, why it was blocked:
+  get_flood_scene_status
+- distribution gate, domain shift, sigma0 vs gamma0: get_distribution_gate
+- mapped flood area on a scene, the raw U-Net extent: get_flood_inference_summary
+- explainability, attribution, which band matters: get_flood_xai
+- VV, VH, the VV/VH ratio: get_sar_band_guide
+- warnings, alerts, authority, forecasting, real-time: get_system_scope
+- the Otsu baseline: get_flood_metrics (otsu_india_test) and
+  get_flood_inference_summary
+Call more than one when a question spans several.
 
 ABSOLUTE RULES
-1. Every project-specific number must come from a tool result in this turn. If
-   a tool did not return a quantity, say plainly that it is not available.
-   Never estimate, interpolate, or recall a number from general knowledge.
-2. When a tool returns available=false, report that. Say DATA UNAVAILABLE or
-   MODEL RESULT NOT COMPUTED and give the reason the tool gave. Do not
-   substitute a plausible value and do not apologise at length.
-3. Keep observations and model outputs distinct. A FIRMS thermal anomaly is a
-   MEASUREMENT at overpass time. A flood extent is a MODEL OUTPUT. A risk index
-   is a documented COMPOSITE INDEX. None of them is a forecast.
-4. SAT-AI does not forecast: no earthquake prediction, no cyclone track, no
-   wildfire ignition, no flood timing or depth. Say so if asked.
-5. Risk levels are prototype research outputs, NOT official warnings. Say this
-   whenever you report one. Official warnings come from IMD, NDMA and State
-   Disaster Management Authorities.
-6. Never invent an emergency phone number, an evacuation order, an official
-   advisory, or the status of any government warning.
-7. SAT-AI is not real-time. Sentinel-1 revisit is 6-12 days. Report data age.
-8. Carry through the caveats attached to tool results. They are part of the
-   answer, not optional decoration.
-9. When the user asks to see, show or zoom to something, call show_on_map. Do
-   not tell them which button to press.
+1. Never state a number that is not in a tool result from this turn. Do not
+   round a value into a different one, do not convert units, do not recall a
+   figure. If a tool did not return it, say it is not available.
+2. When a tool returns available=false, say DATA UNAVAILABLE and give its
+   reason. Never substitute a plausible value.
+3. Metric splits are different things. The India test score is the model's
+   score. The Mekong number is a VALIDATION score used to choose the
+   checkpoint: never call it the India score, the test score or the model's
+   accuracy. Always name the split next to any metric.
+4. A BLOCKED or unvalidated result is not a finding about the ground. The raw
+   U-Net extent on a scene whose distribution gate failed is unvalidated model
+   output: never call it confirmed flooding, observed flooding or the flooded
+   area. Say it was blocked, and why.
+5. Keep observations and model outputs distinct. A Sentinel-1 acquisition is
+   an observation. A flood extent is a model output. Neither is a forecast.
+6. SAT-AI does not forecast floods, is not real-time, and gives NO official
+   warnings. Whenever you report a scene result or answer about warnings, say
+   it is not an official warning and name the official sources the tool gives.
+7. Never invent current flood status, a risk value, a warning, an evacuation
+   instruction, a phone number or a satellite observation.
+8. Explainability is model attribution: what the model relied on, not what
+   physically causes flooding. Say so.
+9. Carry through the caveats attached to tool results.
+10. When the user asks to see, show or zoom to something, call show_on_map.
+    A blocked result is never drawn; say so if they ask for it.
 
-Be concise. State what the data shows, what it does not, and how confident the
-model is. Uncertainty is information, not a weakness."""
+Answer in short paragraphs or a few bullets. State what the data shows, what it
+does not, and how far it can be trusted."""
 
 # --- routing ---------------------------------------------------------------
 
@@ -465,7 +490,16 @@ def is_hard_failure(violations: list[tuple[str, str]]) -> bool:
 
 def _evidence(results: list[dict[str, Any]]) -> tuple[bool, bool, list[str]]:
     """What kinds of source this turn drew on, and the caveats they carry."""
-    kinds = {r.get("source_kind") for r in results if r.get("available")}
+    # A result may carry several kinds: a scene record is a Sentinel-1
+    # acquisition (an observation) and the extent derived from it (a model
+    # output). Counting only one would make the confusion check flag the
+    # correct word for the other.
+    kinds = {
+        kind
+        for r in results
+        if r.get("available")
+        for kind in (r.get("source_kinds") or [r.get("source_kind")])
+    }
     caveats = [c for r in results for c in (r.get("caveats") or [])]
     return "observation" in kinds, "model" in kinds, caveats
 
@@ -483,6 +517,18 @@ UNGROUNDED = (
     "The language layer produced an answer whose values could not all be traced "
     "back to a tool result, so it was rejected. Verified tool output follows."
 )
+#: Sent back to the model once when a draft fails the check for a reason it can
+#: fix. The second draft is validated exactly like the first; nothing is waived.
+REPAIR_PROMPT = (
+    "Your previous answer failed SAT-AI's grounding check: {problems}. Rewrite it. "
+    "Use only numbers that appear verbatim in the tool results above, leave out "
+    "any number you cannot find there, keep the caveats, and do not call any tool."
+)
+
+#: Violations a rewrite can fix. Fabricated authority is not among them: it is
+#: never regenerated (see ``is_hard_failure``).
+_REPAIRABLE = frozenset({"ungrounded_value", "missing_caveat", "observation_prediction_confusion"})
+
 OVERREACHED = (
     "The language layer asserted an authority SAT-AI does not have, so its "
     "answer was rejected. Verified tool output follows."
@@ -582,14 +628,22 @@ async def answer(request: ChatRequest) -> ChatResponse:
     notes: list[str] = []
     text = ""
 
+    max_rounds = int(generation_settings()["max_tool_rounds"])
+    answered_by: str | None = None
     try:
-        for round_index in range(MAX_TOOL_ROUNDS + 1):
-            allow_tools = round_index < MAX_TOOL_ROUNDS
-            text, calls, _usage = await call_gemini(
+        for round_index in range(max_rounds + 1):
+            allow_tools = round_index < max_rounds
+            text, calls, usage = await call_gemini(
                 contents,
                 system_instruction=SYSTEM_PROMPT,
                 tools=TOOL_DECLARATIONS if allow_tools else None,
             )
+            answered_by = str(usage.get("model") or "") or answered_by
+            if usage.get("fallback_from"):
+                notes.append(
+                    f"{usage['fallback_from']} refused the call ({usage.get('fallback_reason')}); "
+                    f"answered by {usage.get('model')}."
+                )
             if not calls:
                 break
 
@@ -606,9 +660,9 @@ async def answer(request: ChatRequest) -> ChatResponse:
                 results.append(result)
                 contents.append(tool_turn(name, result))
 
-            if round_index == MAX_TOOL_ROUNDS - 1:
+            if round_index == max_rounds - 1:
                 notes.append(
-                    f"Tool budget of {MAX_TOOL_ROUNDS} rounds reached; the final "
+                    f"Tool budget of {max_rounds} rounds reached; the final "
                     f"turn was generated without further tool access."
                 )
     except GeminiNotConfigured:
@@ -634,13 +688,42 @@ async def answer(request: ChatRequest) -> ChatResponse:
 
     has_observation, has_model, caveats = _evidence(results)
     allowed = groundable_values(results)
-    grounded, violations = validate_response(
-        text,
-        allowed,
-        has_observation=has_observation,
-        has_model=has_model,
-        caveats=caveats,
-    )
+
+    def check(draft: str) -> tuple[bool, list[tuple[str, str]]]:
+        return validate_response(
+            draft,
+            allowed,
+            has_observation=has_observation,
+            has_model=has_model,
+            caveats=caveats,
+        )
+
+    grounded, violations = check(text)
+
+    if (
+        not grounded
+        and not is_hard_failure(violations)
+        and all(kind in _REPAIRABLE for kind, _ in violations)
+    ):
+        # The first draft is recorded as rejected either way -- that is the C1
+        # draft-violation rate -- and the rewrite has to pass the same check.
+        summary = "; ".join(f"[{k}] {d}" for k, d in violations[:5])
+        notes.append(f"Grounding violation in first draft, rewrite requested: {summary}")
+        try:
+            contents.append(model_turn(text, []))
+            contents.append(user_turn(REPAIR_PROMPT.format(problems=summary)))
+            rewrite, _calls, usage = await call_gemini(
+                contents, system_instruction=SYSTEM_PROMPT, tools=None
+            )
+            answered_by = str(usage.get("model") or "") or answered_by
+            rewrite_ok, rewrite_violations = check(rewrite)
+            if rewrite_ok:
+                text, grounded, violations = rewrite, True, []
+                notes.append("Rewrite passed the grounding check.")
+            else:
+                violations = rewrite_violations
+        except GeminiError as exc:
+            notes.append(f"Rewrite not obtained ({exc}).")
 
     if not grounded:
         summary = "; ".join(f"[{k}] {d}" for k, d in violations[:5])
@@ -677,7 +760,7 @@ async def answer(request: ChatRequest) -> ChatResponse:
         notes=[
             *notes,
             f"latency {time.perf_counter() - started:.2f}s",
-            f"model {describe_configuration()['model']}",
+            f"model {answered_by or describe_configuration()['model']}",
         ],
     )
 

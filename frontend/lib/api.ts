@@ -177,15 +177,43 @@ export interface ChatReply {
   notes: string[];
 }
 
+/** Longer than the backend's own budget (tool rounds plus one rewrite), so
+    the server's answer -- including a degraded one -- arrives before this. */
+const CHAT_TIMEOUT_MS = 90_000;
+
 export async function askAgent(message: string, region: string | null): Promise<ChatReply> {
   if (!API_URL) throw new Error('NEXT_PUBLIC_API_URL is not configured.');
-  const res = await fetch(`${API_URL}/api/v1/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, region }),
-  });
-  if (!res.ok) throw new Error(`agent returned ${res.status}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/v1/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, region }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    throw new Error(
+      (e as Error).name === 'AbortError'
+        ? 'The assistant took too long to answer. Try again, or ask a shorter question.'
+        : 'The SAT-AI backend could not be reached. Check your connection and try again.',
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+  if (res.status === 429) {
+    throw new Error('Too many questions in a short time. Wait a minute and ask again.');
+  }
+  if (res.status === 422) throw new Error('That question could not be sent. Try rephrasing it.');
+  if (!res.ok) throw new Error(`The SAT-AI backend returned an error (${res.status}).`);
   return res.json();
+}
+
+/** Which model wrote this reply, read from the notes the backend attaches. */
+export function answeredBy(reply: ChatReply): string | null {
+  const note = reply.notes.find((n) => n.startsWith('model '));
+  return note ? note.slice('model '.length) : null;
 }
 
 export async function getHealth(): Promise<Record<string, unknown> | null> {

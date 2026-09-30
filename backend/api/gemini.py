@@ -30,26 +30,71 @@ import httpx
 
 __all__ = [
     "DEFAULT_MODEL",
+    "FALLBACK_MODEL",
     "GeminiError",
     "GeminiNotConfigured",
     "call_args",
     "call_gemini",
     "call_name",
     "describe_configuration",
+    "fallback_model",
+    "generation_settings",
     "is_configured",
 ]
 
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-#: Current production default. Overridden by GEMINI_MODEL, which is why the
-#: constant is a starting point rather than a hard-coded assumption -- model
-#: identifiers are retired on Google's schedule, not this project's, and a
-#: deployment whose account has a different model available should not need a
-#: code change. `scripts/check_env.py` lists what the configured key can
+#: The configured default, matching ``satai.config.LLMSettings``. Overridden by
+#: GEMINI_MODEL, which is why the constant is a starting point rather than a
+#: hard-coded assumption -- model identifiers are retired on Google's schedule,
+#: not this project's. `scripts/check_env.py` lists what the configured key can
 #: actually reach.
-DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_MODEL = "gemini-2.5-flash"
+
+#: Where one refused call goes instead. This key has been told
+#: "gemini-2.5-flash is no longer available to new users" before, and free-tier
+#: quota is counted per model, so a second identifier is what keeps the
+#: assistant answering when the first is retired or spent. Overridden by
+#: GEMINI_FALLBACK_MODEL. Whichever model answers is recorded in the usage.
+FALLBACK_MODEL = "gemini-3.8-flash"
 
 TIMEOUT_S = 45.0
+
+#: Bounds shared with ``satai.config.LLMSettings``. Out-of-range or unparsable
+#: values fall back to the default rather than raising: a typo in a dashboard
+#: field should not take the chat endpoint down.
+_SETTINGS: dict[str, tuple[type, float, float, float]] = {
+    "GEMINI_TEMPERATURE": (float, 0.2, 0.0, 2.0),
+    "GEMINI_MAX_OUTPUT_TOKENS": (int, 1200, 1, 65_536),
+    "GEMINI_TIMEOUT_S": (float, TIMEOUT_S, 1.0, 300.0),
+    "GEMINI_MAX_TOOL_ROUNDS": (int, 3, 1, 10),
+}
+
+
+def _setting(name: str) -> float:
+    kind, default, low, high = _SETTINGS[name]
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(kind(raw))
+    except ValueError:
+        return default
+    return value if low <= value <= high else default
+
+
+def generation_settings() -> dict[str, Any]:
+    """The non-secret generation settings in force, read from the environment."""
+    return {
+        "temperature": _setting("GEMINI_TEMPERATURE"),
+        "max_output_tokens": int(_setting("GEMINI_MAX_OUTPUT_TOKENS")),
+        "timeout_s": _setting("GEMINI_TIMEOUT_S"),
+        "max_tool_rounds": int(_setting("GEMINI_MAX_TOOL_ROUNDS")),
+    }
+
+
+def fallback_model() -> str:
+    return os.environ.get("GEMINI_FALLBACK_MODEL", "").strip() or FALLBACK_MODEL
 
 
 class GeminiError(RuntimeError):
@@ -106,7 +151,7 @@ def key_problem() -> str | None:
 
 
 def model_name() -> str:
-    return os.environ.get("GEMINI_MODEL", DEFAULT_MODEL)
+    return os.environ.get("GEMINI_MODEL", "").strip() or DEFAULT_MODEL
 
 
 def is_configured() -> bool:
@@ -124,6 +169,8 @@ def describe_configuration() -> dict[str, Any]:
         "provider": "google-gemini",
         "configured": is_configured(),
         "model": model_name() if is_configured() else None,
+        "fallback_model": fallback_model() if is_configured() else None,
+        **generation_settings(),
         # Names the defect, never any part of the value. A key that is present
         # but unusable is otherwise indistinguishable from a working one until
         # the first chat turn fails.
@@ -161,8 +208,8 @@ async def call_gemini(
     *,
     system_instruction: str | None = None,
     tools: list[dict[str, Any]] | None = None,
-    temperature: float = 0.2,
-    max_output_tokens: int = 1200,
+    temperature: float | None = None,
+    max_output_tokens: int | None = None,
 ) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
     """One generation turn.
 
@@ -174,11 +221,14 @@ async def call_gemini(
     if not key:
         raise GeminiNotConfigured("GEMINI_API_KEY is not set on this deployment")
 
+    settings = generation_settings()
     body: dict[str, Any] = {
         "contents": contents,
         "generationConfig": {
-            "temperature": temperature,
-            "maxOutputTokens": max_output_tokens,
+            "temperature": settings["temperature"] if temperature is None else temperature,
+            "maxOutputTokens": (
+                settings["max_output_tokens"] if max_output_tokens is None else max_output_tokens
+            ),
         },
     }
     if system_instruction:
@@ -221,18 +271,18 @@ async def _post(
     allow_fallback: bool,
     attempt: int = 0,
 ) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
-    """One call to one model, with a single retry onto the current default.
+    """One call to one model, with a single retry onto the fallback model.
 
     Model identifiers are retired on Google's schedule. A deployment whose
     ``GEMINI_MODEL`` names a retired one would otherwise be permanently
-    degraded, with the reason visible only in a chat note. It falls back once,
-    to the identifier this code was written against, and **records which model
-    actually answered** -- silently substituting a model would make the
-    provenance of every response a guess.
+    degraded, with the reason visible only in a chat note. The same holds for a
+    spent quota, which is per model. It falls back once, to ``fallback_model()``,
+    and **records which model actually answered** -- silently substituting a
+    model would make the provenance of every response a guess.
     """
     url = f"{API_BASE}/models/{model}:generateContent"
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
+        async with httpx.AsyncClient(timeout=generation_settings()["timeout_s"]) as client:
             response = await client.post(
                 url,
                 # Header rather than ?key=, so the credential never lands in a
@@ -252,13 +302,14 @@ async def _post(
         except (ValueError, AttributeError):
             detail = ""
 
+        fallback = fallback_model()
         if (
             allow_fallback
             and response.status_code == 404
             and _RETIRED in detail
-            and model != DEFAULT_MODEL
+            and model != fallback
         ):
-            return await _post(DEFAULT_MODEL, key, body, allow_fallback=False)
+            return await _fallback(model, fallback, key, body, "retired")
 
         # Capacity, not a defect in the request. Observed repeatedly against a
         # freshly-released model. Retried a few times with backoff, because
@@ -269,6 +320,12 @@ async def _post(
             await asyncio.sleep(_BACKOFF_S * (2**attempt))
             return await _post(model, key, body, allow_fallback=allow_fallback, attempt=attempt + 1)
 
+        # Quota is counted per model. Once retries have not cleared it, the
+        # other model's quota is untouched, so it is tried once rather than the
+        # turn being lost.
+        if allow_fallback and response.status_code == 429 and model != fallback:
+            return await _fallback(model, fallback, key, body, "quota")
+
         raise GeminiError(f"Gemini returned {response.status_code}: {detail}")
 
     payload = response.json()
@@ -277,6 +334,15 @@ async def _post(
     # The model that actually produced this text, which is not necessarily the
     # one that was configured.
     usage["model"] = model
+    return text, calls, usage
+
+
+async def _fallback(
+    model: str, fallback: str, key: str, body: dict[str, Any], why: str
+) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    text, calls, usage = await _post(fallback, key, body, allow_fallback=False)
+    usage["fallback_from"] = model
+    usage["fallback_reason"] = why
     return text, calls, usage
 
 

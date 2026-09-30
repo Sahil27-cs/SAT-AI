@@ -155,13 +155,26 @@ export const ALERT_FORBIDDEN: string[] = [
   'Any emergency telephone number.',
 ];
 
+/**
+ * Questions the flood assistant is built to answer, and the ones it must
+ * decline. The last three are refusal and scope cases on purpose: a demo that
+ * only shows easy questions does not show the part that matters.
+ */
 export const SAMPLE_QUESTIONS: string[] = [
-  'What is the current flood risk in bihar_ganga?',
-  'Which satellite scenes were used?',
-  'Is this flood map real-time?',
+  'Explain the flood model',
+  'What dataset and ground truth are used?',
+  'What are the India test metrics?',
+  'What is the Mekong validation score?',
+  'Explain VV, VH and the VV/VH ratio',
+  'Explain the U-Net prediction pipeline',
+  'Explain the Otsu baseline',
+  'Why was the Nepal scene blocked?',
+  'Explain the 74.8 km² raw inference',
+  'What is distribution shift here?',
+  'What does the XAI say about the bands?',
+  'Does SAT-AI give official warnings?',
   'Should residents evacuate?',
-  'Will it flood here next week?',
-  'What is the flood risk in Chennai?',
+  'How much of Bihar is flooded right now?',
 ];
 
 export const DISCLAIMER =

@@ -146,6 +146,11 @@ Environment variables (all optional except the last):
 | `CORS_ALLOW_ORIGINS` | `*` | Browser origins |
 | `GEMINI_API_KEY` | unset | **Turns the language layer on.** Backend only — never `NEXT_PUBLIC_*` |
 | `GEMINI_MODEL` | `gemini-2.5-flash` | Reasoning model, native function calling |
+| `GEMINI_FALLBACK_MODEL` | `gemini-3.8-flash` | Tried once when `GEMINI_MODEL` is retired (404) or out of quota (429); the answering model is recorded in the reply notes |
+| `GEMINI_TEMPERATURE` | `0.2` | Sampling temperature, 0 to 2 |
+| `GEMINI_MAX_OUTPUT_TOKENS` | `1200` | Output cap per generation |
+| `GEMINI_TIMEOUT_S` | `45` | Per-request timeout to Google |
+| `GEMINI_MAX_TOOL_ROUNDS` | `3` | Tool rounds before the model must answer, 1 to 10 |
 | `SUPABASE_SERVICE_KEY` | unset | Turns the `chat_turns` audit log on |
 
 Verify with:

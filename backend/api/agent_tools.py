@@ -23,7 +23,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from flood_tools import (
+    FLOOD_TOOL_DECLARATIONS,
+    FLOOD_TOOL_NAMES,
+    analysis_catalogue,
+    execute_flood_tool,
+)
+
 __all__ = [
+    "LEGACY_TOOL_DECLARATIONS",
     "MAP_LAYERS",
     "TOOL_DECLARATIONS",
     "execute_tool",
@@ -57,7 +65,7 @@ _REGION_ENUM = [
 #: for a developer: each one states what the tool returns AND what it does not,
 #: because a description that oversells its tool is the cheapest way to get a
 #: model to call it for the wrong question.
-TOOL_DECLARATIONS: list[dict[str, Any]] = [
+LEGACY_TOOL_DECLARATIONS: list[dict[str, Any]] = [
     {
         "name": "get_study_area",
         "description": (
@@ -159,6 +167,23 @@ TOOL_DECLARATIONS: list[dict[str, Any]] = [
 ]
 
 
+_BY_NAME = {t["name"]: t for t in LEGACY_TOOL_DECLARATIONS}
+
+#: What the deployed assistant is offered: the flood tools, plus the study-area
+#: and map tools they need. Scoped to flood deliberately. The generic
+#: ``get_hazard_result`` reads a results table no batch run has written, so for
+#: flood it answered "not computed" about a scene that has in fact been
+#: processed; ``get_model_info`` and ``get_experiment`` are superseded by the
+#: flood tools, which read exported reports instead of typed constants. The
+#: legacy tools still execute if called, and are kept declared in
+#: ``LEGACY_TOOL_DECLARATIONS`` for the multi-hazard benchmark.
+TOOL_DECLARATIONS: list[dict[str, Any]] = [
+    *FLOOD_TOOL_DECLARATIONS,
+    _BY_NAME["get_study_area"],
+    _BY_NAME["show_on_map"],
+]
+
+
 async def execute_tool(
     name: str,
     arguments: dict[str, Any],
@@ -171,6 +196,8 @@ async def execute_tool(
     An exception here would become a 500 on a question the system can answer
     perfectly well with "that is not available". Genuine faults still raise.
     """
+    if name in FLOOD_TOOL_NAMES:
+        return execute_flood_tool(name, arguments)
     if name == "get_study_area":
         return _study_area(arguments.get("region", ""), study_areas)
     if name == "get_hazard_result":
@@ -413,24 +440,35 @@ def _experiment(contribution: str) -> dict[str, Any]:
     return dict(entry)
 
 
-#: Which layers actually have data. Everything but the study-area outlines
-#: depends on a batch run that has not happened, so the map action reports what
-#: it could not switch on rather than silently activating an empty layer -- a
-#: user who toggles FLOOD and sees nothing cannot tell "no flooding" from
-#: "never computed".
+#: Why a layer is off when no analysis for the region draws it. Availability
+#: itself is read from the analysis catalogue (``_drawable_layers``): a layer is
+#: on only where a displayable analysis ships an overlay for it. The map action
+#: reports what it could not switch on rather than silently activating an empty
+#: layer -- a user who toggles FLOOD and sees nothing cannot tell "no flooding"
+#: from "never computed" -- and a withheld result such as a gate-failed U-Net run
+#: never makes its layer available.
 _LAYER_AVAILABILITY: dict[str, str | None] = {
     "aoi": None,
-    "flood": (
-        "No flood extent raster exists: the inference pipeline has not been run for any region."
-    ),
+    "flood": "No displayable flood extent exists for this study area.",
     "wildfire": "FIRMS ingestion requires FIRMS_MAP_KEY, which is not configured.",
     "rainfall": "GPM ingestion requires NASA Earthdata credentials, which are not configured.",
     "terrain": "DEM acquisition runs in the batch plane and has not been executed.",
-    "risk": (
-        "The risk engine needs hazard, exposure and vulnerability rasters it has not been given."
-    ),
+    "risk": "No risk analysis with a map layer exists for this study area.",
     "damage": "Change detection needs a pre/post image pair around a specific event.",
 }
+
+
+def _drawable_layers(region: str) -> set[str]:
+    """Layers a displayable analysis for this region actually ships an overlay for."""
+    layers = {"aoi"}
+    for area in analysis_catalogue().get("study_areas") or []:
+        if area.get("id") != region:
+            continue
+        for analysis in area.get("analyses") or []:
+            if analysis.get("displayable") is not True:
+                continue
+            layers.update(str(o.get("layer")) for o in analysis.get("overlays") or [])
+    return layers
 
 
 def _show_on_map(arguments: dict[str, Any], study_areas: list[dict[str, Any]]) -> dict[str, Any]:
@@ -444,11 +482,12 @@ def _show_on_map(arguments: dict[str, Any], study_areas: list[dict[str, Any]]) -
             "reason": f"{region!r} is not a SAT-AI study area; the map was not moved.",
         }
 
-    activated = [layer for layer in requested if _LAYER_AVAILABILITY.get(layer) is None]
+    drawable = _drawable_layers(region)
+    activated = [layer for layer in requested if layer in drawable]
     unavailable = {
-        layer: _LAYER_AVAILABILITY[layer]
+        layer: _LAYER_AVAILABILITY.get(layer) or f"{layer!r} is not a SAT-AI map layer."
         for layer in requested
-        if _LAYER_AVAILABILITY.get(layer) is not None
+        if layer not in drawable
     }
     if "aoi" not in activated:
         activated.append("aoi")

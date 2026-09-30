@@ -142,6 +142,7 @@ td.num { font-variant-numeric: tabular-nums; font-family: var(--mono); font-size
 .msg .body { background: var(--panel-2); border: 1px solid var(--line-soft);
   border-radius: 8px; padding: 12px 14px; white-space: pre-wrap; font-size: 14px; }
 .msg.user .body { background: rgba(56,189,248,.07); border-color: rgba(56,189,248,.22); }
+.msg.error .body { background: rgba(248,113,113,.07); border-color: rgba(248,113,113,.35); color: var(--danger); }
 .msg .meta { font-size: 11px; color: var(--fg-faint); margin-top: 7px;
   display: flex; gap: 12px; flex-wrap: wrap; font-family: var(--mono); }
 

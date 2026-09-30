@@ -23,6 +23,7 @@ Two behaviours are pinned:
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from typing import Any, ClassVar
@@ -229,9 +230,14 @@ class _Client:
     async def __aexit__(self, *exc: Any) -> None:
         return None
 
+    #: Models the stub answers 429 for, as a spent daily quota does.
+    exhausted: ClassVar[set[str]] = set()
+
     async def post(self, url: str, **kwargs: Any) -> _Response:
         model = url.rsplit("/models/", 1)[1].split(":")[0]
         _Client.calls.append(model)
+        if model in _Client.exhausted:
+            return _Response(429, {"error": {"message": "You exceeded your current quota"}})
         if model == "gemini-2.5-flash":
             return _Response(
                 404,
@@ -260,26 +266,32 @@ def _run_with_stub(monkeypatch: pytest.MonkeyPatch, configured_model: str) -> tu
     _Client.calls = []
     monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
     monkeypatch.setenv("GEMINI_MODEL", configured_model)
+    monkeypatch.delenv("GEMINI_FALLBACK_MODEL", raising=False)
     monkeypatch.setattr(gemini.httpx, "AsyncClient", _Client)
+    # Backoff between transient retries is real time; the stub needs none.
+    monkeypatch.setattr(gemini, "_BACKOFF_S", 0.0)
     text, _calls, usage = asyncio.run(
         gemini.call_gemini([{"role": "user", "parts": [{"text": "hi"}]}])
     )
     return text, usage
 
 
-def test_a_retired_model_falls_back_once_to_the_current_default(
+def test_a_retired_model_falls_back_once_to_the_fallback_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A deployment naming a retired model would otherwise stay degraded forever.
 
     Google retires identifiers on its own schedule. The 404 body names the
     replacement, so the failure is recoverable -- but only once, and only onto
-    the identifier this code was written against.
+    the configured fallback. This key has been told exactly this about
+    gemini-2.5-flash, which is also the configured default.
     """
-    text, _usage = _run_with_stub(monkeypatch, "gemini-2.5-flash")
+    text, usage = _run_with_stub(monkeypatch, "gemini-2.5-flash")
 
     assert text == "answered"
-    assert _Client.calls == ["gemini-2.5-flash", gemini.DEFAULT_MODEL]
+    assert _Client.calls == ["gemini-2.5-flash", gemini.FALLBACK_MODEL]
+    assert usage["fallback_from"] == "gemini-2.5-flash"
+    assert usage["fallback_reason"] == "retired"
 
 
 def test_the_model_that_actually_answered_is_recorded(
@@ -291,15 +303,111 @@ def test_the_model_that_actually_answered_is_recorded(
     retired and another answers, the artifact has to say which.
     """
     _text, usage = _run_with_stub(monkeypatch, "gemini-2.5-flash")
-    assert usage["model"] == gemini.DEFAULT_MODEL
+    assert usage["model"] == gemini.FALLBACK_MODEL
     assert usage["model"] != "gemini-2.5-flash"
 
 
 def test_a_working_model_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
     """The fallback must not fire on a model that answered."""
-    _text, usage = _run_with_stub(monkeypatch, gemini.DEFAULT_MODEL)
-    assert _Client.calls == [gemini.DEFAULT_MODEL]
-    assert usage["model"] == gemini.DEFAULT_MODEL
+    _text, usage = _run_with_stub(monkeypatch, gemini.FALLBACK_MODEL)
+    assert _Client.calls == [gemini.FALLBACK_MODEL]
+    assert usage["model"] == gemini.FALLBACK_MODEL
+    assert "fallback_from" not in usage
+
+
+def test_a_spent_quota_falls_back_once_and_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Quota is counted per model, so the other model can still answer.
+
+    The primary is retried first (a per-minute limit clears), then the fallback
+    is tried once, and the usage records which model answered and why.
+    """
+    monkeypatch.setattr(_Client, "exhausted", {"gemini-custom-flash"})
+    _text, usage = _run_with_stub(monkeypatch, "gemini-custom-flash")
+
+    assert _Client.calls == ["gemini-custom-flash"] * gemini._MAX_ATTEMPTS + [gemini.FALLBACK_MODEL]
+    assert usage["model"] == gemini.FALLBACK_MODEL
+    assert usage["fallback_reason"] == "quota"
+
+
+def test_a_spent_quota_on_both_models_is_an_error_not_a_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_Client, "exhausted", {"gemini-custom-flash", gemini.FALLBACK_MODEL})
+    with pytest.raises(gemini.GeminiError, match="429"):
+        _run_with_stub(monkeypatch, "gemini-custom-flash")
+    assert _Client.calls.count(gemini.FALLBACK_MODEL) == gemini._MAX_ATTEMPTS
+
+
+# --- generation settings -----------------------------------------------------
+
+
+def test_the_default_model_is_gemini_2_5_flash(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    assert gemini.DEFAULT_MODEL == "gemini-2.5-flash"
+    assert gemini.model_name() == "gemini-2.5-flash"
+
+
+def test_generation_settings_default_to_the_documented_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "GEMINI_TEMPERATURE",
+        "GEMINI_MAX_OUTPUT_TOKENS",
+        "GEMINI_TIMEOUT_S",
+        "GEMINI_MAX_TOOL_ROUNDS",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    assert gemini.generation_settings() == {
+        "temperature": 0.2,
+        "max_output_tokens": 1200,
+        "timeout_s": 45.0,
+        "max_tool_rounds": 3,
+    }
+
+
+def test_generation_settings_are_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GEMINI_TEMPERATURE", "0.5")
+    monkeypatch.setenv("GEMINI_MAX_OUTPUT_TOKENS", "800")
+    monkeypatch.setenv("GEMINI_TIMEOUT_S", "30")
+    monkeypatch.setenv("GEMINI_MAX_TOOL_ROUNDS", "2")
+    assert gemini.generation_settings() == {
+        "temperature": 0.5,
+        "max_output_tokens": 800,
+        "timeout_s": 30.0,
+        "max_tool_rounds": 2,
+    }
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("GEMINI_MAX_TOOL_ROUNDS", "0"),
+        ("GEMINI_MAX_TOOL_ROUNDS", "50"),
+        ("GEMINI_TEMPERATURE", "hot"),
+        ("GEMINI_MAX_OUTPUT_TOKENS", "-5"),
+    ],
+)
+def test_an_out_of_range_setting_falls_back_to_its_default(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    """A dashboard typo must not take the chat endpoint down, nor unbound the loop."""
+    monkeypatch.setenv(name, value)
+    settings = gemini.generation_settings()
+    assert settings["max_tool_rounds"] == 3
+    assert settings["temperature"] == 0.2
+    assert settings["max_output_tokens"] == 1200
+
+
+def test_the_configuration_summary_never_carries_the_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
+    summary = gemini.describe_configuration()
+    assert summary["max_tool_rounds"] == 3
+    assert summary["fallback_model"] == gemini.fallback_model()
+    assert FAKE_KEY not in json.dumps(summary)
 
 
 # --- the tool loop's thought signature ---------------------------------------
