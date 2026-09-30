@@ -46,6 +46,7 @@ except ImportError:  # pragma: no cover - outside an installed package
 
 import numpy as np
 
+from ml.hazards.overlay import continuous_overlay
 from satai.geo.aoi import load_aoi_registry
 from satai.hazards.extreme_weather import track_exposure, wind_risk_index
 from satai.providers.ibtracs import fetch_basin, load_tracks
@@ -190,7 +191,36 @@ def main(argv: list[str] | None = None) -> int:
         with rasterio.open(args.out / f"{stem}_{layer}.tif", "w", **profile) as dst:
             dst.write(array.astype("float32"), 1)
 
+    overlay_dir = REPO_ROOT / "frontend" / "public" / "layers"
+    grid_profile = {"crs": "EPSG:4326", "transform": transform}
+    wind_overlay = continuous_overlay(
+        peak_wind.astype("float32"),
+        grid_profile,
+        overlay_dir / f"{stem}_peak_wind.png",
+        vmin=25.0,
+        vmax=float(peak_wind.max()),
+        colour=(219, 39, 119),
+        floor=25.0,
+    )
+    risk_overlay = continuous_overlay(
+        np.asarray(risk, dtype="float32"),
+        grid_profile,
+        overlay_dir / f"{stem}_risk.png",
+        vmin=0.0,
+        vmax=float(np.nanpercentile(risk, 99.5)) or 1.0,
+        colour=(220, 38, 38),
+        floor=engine.config.floor,
+    )
+
     payload: dict[str, Any] = {
+        "overlays": {
+            "peak_wind": {
+                "url": f"/layers/{wind_overlay.path.name}",
+                **wind_overlay.describe(),
+                "shows": "modelled peak wind above the 25 m/s damage threshold",
+            },
+            "risk": {"url": f"/layers/{risk_overlay.path.name}", **risk_overlay.describe()},
+        },
         "analysis": "historical_cyclone_wind_exposure",
         "not_a_prediction": (
             "Hindcast from an observed best track. SAT-AI does not forecast "

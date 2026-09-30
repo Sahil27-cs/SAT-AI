@@ -37,6 +37,7 @@ import torch
 from torch.utils.data import Dataset
 
 from satai.errors import ValidationError
+from satai.paths import REPO_ROOT
 from satai.preprocessing.chips import ChipSpec, Sen1Floods11Dataset
 from satai.preprocessing.normalize import StackNormalizer
 from satai.preprocessing.splits import ChipRef
@@ -60,6 +61,18 @@ class BandSelection(StrEnum):
     VV_VH = "vv_vh"
     VV = "vv"
     VH = "vh"
+    #: The ratio band alone. Added because it is the one input that survives a
+    #: change of radiometric product: on the real Koshi Terai scene VV and VH
+    #: each sat about 2.5 dB off the training distribution (gamma0 against
+    #: sigma0) while their difference passed the gate at KS 0.018. An offset
+    #: common to both polarisations cancels in VV - VH.
+    RATIO = "ratio"
+    #: C2's ancillary arms: the full SAR stack plus terrain, rainfall, or both.
+    #: Their extra bands are not in the chip; they are read from rasters
+    #: co-registered by scripts/build_ancillary.py.
+    SAR_DEM = "sar_dem"
+    SAR_RAIN = "sar_rain"
+    FULL = "full"
 
     @property
     def bands(self) -> tuple[str, ...]:
@@ -76,6 +89,10 @@ _SELECTION_BANDS: dict[BandSelection, tuple[str, ...]] = {
     BandSelection.VV_VH: SAR_BANDS,
     BandSelection.VV: ("vv_db",),
     BandSelection.VH: ("vh_db",),
+    BandSelection.RATIO: (DERIVED_RATIO,),
+    BandSelection.SAR_DEM: (*SAR_BANDS, DERIVED_RATIO, "elevation_m", "slope_deg"),
+    BandSelection.SAR_RAIN: (*SAR_BANDS, DERIVED_RATIO, "rain_72h_mm"),
+    BandSelection.FULL: (*SAR_BANDS, DERIVED_RATIO, "elevation_m", "slope_deg", "rain_72h_mm"),
 }
 
 _SELECTION_TAGS: dict[BandSelection, str] = {
@@ -83,7 +100,47 @@ _SELECTION_TAGS: dict[BandSelection, str] = {
     BandSelection.VV_VH: "sar",
     BandSelection.VV: "vv_only",
     BandSelection.VH: "vh_only",
+    BandSelection.RATIO: "ratio_only",
+    BandSelection.SAR_DEM: "sar_dem",
+    BandSelection.SAR_RAIN: "sar_rain",
+    BandSelection.FULL: "full",
 }
+
+#: Where each ancillary band lives: (subdirectory, band index in its raster).
+ANCILLARY_BANDS: dict[str, tuple[str, int]] = {
+    "elevation_m": ("dem", 1),
+    "slope_deg": ("dem", 2),
+    "rain_72h_mm": ("rain", 1),
+}
+
+ANCILLARY_DIR = REPO_ROOT / "data" / "processed" / "ancillary"
+
+
+def load_ancillary(chip_key: str, band: str) -> npt.NDArray[np.floating]:
+    """One co-registered ancillary band for one chip."""
+    import rasterio
+
+    kind, index = ANCILLARY_BANDS[band]
+    path = ANCILLARY_DIR / kind / f"{chip_key}.tif"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"no {kind} raster for {chip_key} at {path}. "
+            f"Run: python scripts/build_ancillary.py --{kind}"
+        )
+    with rasterio.open(path) as src:
+        values: npt.NDArray[np.floating] = src.read(index).astype(np.float64)
+    return values
+
+
+def assemble_stack(
+    features: npt.NDArray[np.floating], chip_key: str, selection: bool | BandSelection
+) -> npt.NDArray[np.floating]:
+    """The full input stack for one chip: SAR bands, then any ancillary ones."""
+    if not (isinstance(selection, BandSelection) and set(selection.bands) & set(ANCILLARY_BANDS)):
+        return stack_with_ratio(features, selection)
+    sar = stack_with_ratio(features, BandSelection.VV_VH_RATIO)
+    extra = [load_ancillary(chip_key, band) for band in selection.bands if band in ANCILLARY_BANDS]
+    return np.concatenate([sar, np.stack(extra)], axis=0)
 
 
 def selection_for_bands(bands: list[str] | tuple[str, ...]) -> BandSelection:
@@ -138,10 +195,17 @@ def stack_with_ratio(
     standardised bands would produce a number with no units and no meaning.
     """
     if isinstance(with_ratio, BandSelection):
+        if set(with_ratio.bands) & {"elevation_m", "slope_deg", "rain_72h_mm"}:
+            raise ValueError(
+                f"{with_ratio.value} needs ancillary rasters; use assemble_stack with a chip key"
+            )
         if with_ratio is BandSelection.VV:
             return features[0:1]
         if with_ratio is BandSelection.VH:
             return features[1:2]
+        if with_ratio is BandSelection.RATIO:
+            ratio: npt.NDArray[np.floating] = (features[0] - features[1])[None, ...]
+            return ratio
         if with_ratio is BandSelection.VV_VH:
             return features
     elif not with_ratio:
@@ -203,7 +267,7 @@ class FloodChips(Dataset[FloodBatch]):
         chip = self.chips[index]
         features, labels, valid = self.reader.load(chip)
 
-        features = stack_with_ratio(features, self.with_ratio)
+        features = assemble_stack(features, chip.key, self.with_ratio)
         features = self.normalizer.transform_stack(features, list(self.bands))
 
         # Normalisation leaves NaN as NaN; the network cannot. Zero is the
@@ -281,7 +345,7 @@ def fit_normalizer(
 
     for chip in usable:
         features, _, valid = reader.load(chip)
-        stack = stack_with_ratio(features, with_ratio)
+        stack = assemble_stack(features, chip.key, with_ratio)
         for i, band in enumerate(bands):
             # Only pixels that are both finite and annotated. Fitting on the
             # border no-data sentinel would drag every percentile downward.

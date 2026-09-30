@@ -19,7 +19,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { StudyArea } from '@/lib/study-areas';
 import { ROLE_LABEL, verifiedEvents } from '@/lib/study-areas';
 import type { Analysis } from '@/lib/analyses';
-import { ANALYSED_AREAS, WILDFIRE, analysesFor } from '@/lib/analyses';
+import { ANALYSED_AREAS, WILDFIRE, analysesFor, mapOverlays } from '@/lib/analyses';
 
 export type LayerId =
   | 'aoi'
@@ -29,6 +29,8 @@ export type LayerId =
   | 'rainfall'
   | 'terrain'
   | 'risk'
+  | 'exposure'
+  | 'vulnerability'
   | 'damage';
 
 export interface LayerState {
@@ -64,12 +66,24 @@ export function buildLayers(area: StudyArea | undefined): LayerState[] {
   const events = area ? verifiedEvents(area) : [];
   const floodEvent = events.find((e) => e.hazard === 'flood');
   const produced = area ? analysesFor(area.id) : [];
-  const forHazard = (hazard: string, kind?: Analysis['kind']) =>
-    produced.find((a) => a.hazard === hazard && (kind === undefined || a.kind === kind));
+  // A drawable analysis wins over one that was withheld: the Nepal scene has
+  // both a gate-failed U-Net run and a valid baseline extent, and the layer is
+  // available because of the second, not unavailable because of the first.
+  const pick = (hazard: string, kind?: Analysis['kind']) => {
+    const matches = produced.filter(
+      (a) => a.hazard === hazard && (kind === undefined || a.kind === kind),
+    );
+    return matches.find((a) => a.displayable) ?? matches[0];
+  };
+  const hasOverlay = (layer: string) =>
+    produced.some((a) => a.displayable && (a.overlays ?? []).some((o) => o.layer === layer));
 
-  const flood = forHazard('flood', 'model_inference');
-  const fire = forHazard('wildfire');
-  const cyclone = forHazard('cyclone');
+  const flood = pick('flood', 'model_inference');
+  const floodRisk = pick('flood', 'risk_analysis');
+  const burn = produced.find((a) => a.hazard === 'wildfire' && a.kind === 'historical_analysis');
+  const fire = produced.find((a) => a.hazard === 'wildfire' && a.kind === 'observation');
+  const cyclone = pick('cyclone');
+  const withheld = produced.find((a) => a.hazard === 'flood' && a.displayable === false);
 
   return [
     {
@@ -82,31 +96,66 @@ export function buildLayers(area: StudyArea | undefined): LayerState[] {
     },
     {
       id: 'flood',
-      label: 'Flood extent',
+      label: 'Flood extent (hazard)',
       source: flood
-        ? `${flood.observation?.scene_id ?? 'Sentinel-1'} (${flood.observation?.radiometry ?? 'SAR'})`
+        ? `${String(flood.model?.name ?? 'model')} on ${String(flood.observation?.scene_id ?? 'Sentinel-1').slice(0, 26)}`
         : floodEvent
           ? floodEvent.sensor
           : 'Sentinel-1 SAR',
       kind: 'model',
       timestamp: (flood?.processing?.processed_at as string) ?? null,
-      available: flood?.displayable === true,
-      reason: flood
-        ? (flood.withheld_reason ?? undefined)
-        : floodEvent
-          ? `A verified Sentinel-1 event is on file for ${floodEvent.occurredOn}, but the flood model has not been run over this area.`
-          : 'No flood inference has been run for this area.',
+      available: Boolean(flood?.displayable && hasOverlay('flood')),
+      reason: flood?.displayable
+        ? undefined
+        : (withheld?.withheld_reason ??
+          (floodEvent
+            ? `A verified Sentinel-1 event is on file for ${floodEvent.occurredOn}, but no flood map has been produced for this area.`
+            : 'No flood map has been produced for this area.')),
+    },
+    {
+      id: 'exposure',
+      label: 'Population (exposure)',
+      source: 'WorldPop 2020',
+      kind: 'model',
+      timestamp: null,
+      available: hasOverlay('exposure'),
+      reason: hasOverlay('exposure')
+        ? undefined
+        : 'Exposure is drawn where a risk analysis has been run; none has for this area.',
+    },
+    {
+      id: 'vulnerability',
+      label: 'Vulnerability',
+      source: 'no source acquired',
+      kind: 'index',
+      timestamp: null,
+      available: false,
+      reason:
+        (floodRisk?.vulnerability?.reason as string | undefined) ??
+        'No vulnerability layer exists for any study area. The risk engine excludes the term rather than imputing it.',
+    },
+    {
+      id: 'risk',
+      label: 'Risk (combined)',
+      source: 'SAT-AI risk engine, R = H^a E^b',
+      kind: 'index',
+      timestamp: null,
+      available: hasOverlay('risk'),
+      reason: hasOverlay('risk')
+        ? undefined
+        : 'Risk needs a validated hazard field and exposure for this area.',
     },
     {
       id: 'wildfire',
-      label: 'Active fire detections',
-      source: 'NASA FIRMS (VIIRS, keyless regional archive)',
-      kind: 'observation',
+      label: burn ? 'Burn severity and active fire' : 'Active fire detections',
+      source: burn ? 'Sentinel-2 dNBR, NASA FIRMS' : 'NASA FIRMS (VIIRS, keyless archive)',
+      kind: burn ? 'derived' : 'observation',
       timestamp: WILDFIRE?.run_at ?? null,
-      available: Boolean(fire?.detections?.length),
-      reason: fire?.detections?.length
-        ? undefined
-        : `No detections inside this area in the last ${WILDFIRE?.window ?? '7d'}. That is not the same as no fire: the sensor sees a pixel twice a day at best.`,
+      available: Boolean(burn?.displayable || fire?.detections?.length),
+      reason:
+        burn?.displayable || fire?.detections?.length
+          ? undefined
+          : `No burn-severity analysis for this area, and no detections in the last ${WILDFIRE?.window ?? '7d'}. No detection is not the same as no fire.`,
     },
     {
       id: 'cyclone',
@@ -115,9 +164,7 @@ export function buildLayers(area: StudyArea | undefined): LayerState[] {
       kind: 'observation',
       timestamp: (cyclone?.observation?.last_fix as string) ?? null,
       available: cyclone?.displayable === true,
-      reason: cyclone
-        ? undefined
-        : 'No historical cyclone analysis has been run for this area.',
+      reason: cyclone ? undefined : 'No historical cyclone analysis has been run for this area.',
     },
     {
       id: 'rainfall',
@@ -126,36 +173,30 @@ export function buildLayers(area: StudyArea | undefined): LayerState[] {
       kind: 'observation',
       timestamp: null,
       available: false,
-      reason: 'GPM ingestion requires NASA Earthdata credentials, which are not configured.',
+      reason:
+        'IMERG is used as a model input for C2, not drawn: at 0.1 degrees it is one value per study-area chip.',
     },
     {
       id: 'terrain',
-      label: 'Terrain / HAND',
+      label: 'Terrain',
       source: 'Copernicus DEM GLO-30',
       kind: 'derived',
       timestamp: null,
       available: false,
-      reason: 'DEM acquisition runs in the batch plane and has not been executed for this region.',
-    },
-    {
-      id: 'risk',
-      label: 'Risk bands',
-      source: 'SAT-AI risk engine + WorldPop exposure',
-      kind: 'index',
-      timestamp: (cyclone?.risk?.config_hash as string) ? (cyclone?.observation?.last_fix as string) : null,
-      available: Boolean(cyclone?.risk),
-      reason: cyclone?.risk
-        ? undefined
-        : 'The risk engine needs a validated hazard field and an exposure raster for this area. Exposure is available; a validated hazard field is not.',
+      reason: 'Terrain is used as a model input for C2 at chip scale, not drawn as a map layer.',
     },
     {
       id: 'damage',
-      label: 'Change / damage',
-      source: 'Pre/post SAR pair',
+      label: 'Post-event change',
+      source: 'Sentinel-1 pre/post pair',
       kind: 'derived',
       timestamp: null,
-      available: false,
-      reason: 'Change detection needs a pre/post image pair around a specific event.',
+      available: hasOverlay('damage'),
+      reason: hasOverlay('damage')
+        ? undefined
+        : produced.some((a) => a.hazard === 'damage')
+          ? 'Change was measured for this area; its full-resolution raster is summarised in the panel rather than drawn.'
+          : 'Change detection needs a same-orbit pre/post pair around an event.',
     },
   ];
 }
@@ -368,6 +409,30 @@ export function CommandMap({
           // produced. Adding a source conditionally inside a load handler is
           // how a layer ends up referenced before it exists.
 
+          // Raster results, drawn from their small lon/lat PNGs. Added before
+          // the point and line layers so a track or a detection is never hidden
+          // under an overlay. Only validated analyses reach this list.
+          mapOverlays().forEach((overlay, index) => {
+            const id = `overlay-${overlay.layer}-${index}`;
+            map.addSource(id, {
+              type: 'image',
+              url: overlay.url,
+              coordinates: overlay.coordinates as [
+                [number, number],
+                [number, number],
+                [number, number],
+                [number, number],
+              ],
+            });
+            map.addLayer({
+              id: `${id}-layer`,
+              type: 'raster',
+              source: id,
+              paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 0 },
+            });
+            registerMapLayer(overlay.layer, `${id}-layer`);
+          });
+
           map.addSource('cyclone-track', {
             type: 'geojson',
             data: cycloneTrackGeoJSON(),
@@ -421,6 +486,13 @@ export function CommandMap({
               'circle-stroke-width': 1,
             },
           });
+
+          registerMapLayer('cyclone', 'cyclone-track-line');
+          registerMapLayer('cyclone', 'cyclone-track-fixes');
+          registerMapLayer('wildfire', 'fire-detection-points');
+          registerMapLayer('aoi', 'aoi-fill');
+          registerMapLayer('aoi', 'aoi-line');
+          applyVisibility(map, visibleRef.current);
 
           map.on('click', 'cyclone-track-fixes', (e) => {
             const props = e.features?.[0]?.properties ?? {};
@@ -487,10 +559,45 @@ export function CommandMap({
     }
   }, [selectedId, areas, ready]);
 
+  // Which map layers belong to which control. Filled while the map loads,
+  // because overlay ids depend on what the catalogue holds.
+  const groupsRef = useRef<Map<LayerId, string[]>>(new Map());
+  // Everything starts visible. The previous control only ever showed "Study
+  // areas" as checked while every other layer was drawn anyway, and its toggle
+  // returned the list unchanged, so the checkboxes did nothing at all.
+  const [visible, setVisible] = useState<Set<LayerId>>(
+    () => new Set<LayerId>(['aoi', 'flood', 'wildfire', 'cyclone', 'risk', 'exposure', 'damage']),
+  );
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+
+  function registerMapLayer(group: LayerId, mapLayerId: string): void {
+    const ids = groupsRef.current.get(group) ?? [];
+    if (!ids.includes(mapLayerId)) ids.push(mapLayerId);
+    groupsRef.current.set(group, ids);
+  }
+
+  function applyVisibility(map: import('maplibre-gl').Map, shown: Set<LayerId>): void {
+    groupsRef.current.forEach((ids, group) => {
+      for (const id of ids) {
+        if (map.getLayer(id)) {
+          map.setLayoutProperty(id, 'visibility', shown.has(group) ? 'visible' : 'none');
+        }
+      }
+    });
+  }
+
   const toggle = useCallback((id: LayerId) => {
-    setLayers((current) =>
-      current.map((l) => (l.id === id && l.available ? { ...l, timestamp: l.timestamp } : l))
-    );
+    setVisible((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      const map = mapRef.current;
+      if (map) applyVisibility(map, next);
+      return next;
+    });
+    // registerMapLayer/applyVisibility read refs only, so they are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (error) {
@@ -530,7 +637,7 @@ export function CommandMap({
                 <label className="cmd-layer-row">
                   <input
                     type="checkbox"
-                    defaultChecked={layer.id === 'aoi'}
+                    checked={layer.available && visible.has(layer.id)}
                     disabled={!layer.available}
                     onChange={() => toggle(layer.id)}
                   />

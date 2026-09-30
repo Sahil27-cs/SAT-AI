@@ -67,16 +67,64 @@ def _nearest(scenes: list[Any], target: date) -> Any | None:
     return min(dated, key=lambda s: abs((s.acquired_at.date() - target).days))
 
 
+def write_overlay(metadata_path: Path) -> dict[str, Any]:
+    """Draw the change field as a map overlay and record it in the metadata.
+
+    Separate from ``main`` so an existing result can be drawn without reading
+    both scenes again. Only change at or above the analysis threshold is drawn,
+    with opacity following its magnitude up to 10 dB.
+    """
+    import rasterio
+
+    from ml.hazards.overlay import continuous_overlay
+
+    meta = json.loads(metadata_path.read_text(encoding="utf-8"))
+    change_path = REPO_ROOT / meta["artifacts"]["change_db"]
+    with rasterio.open(change_path) as src:
+        magnitude = np.abs(src.read(1).astype("float32"))
+        profile = {"crs": src.crs, "transform": src.transform}
+    threshold = float(meta["method"]["threshold_db"])
+    overlay = continuous_overlay(
+        magnitude,
+        profile,
+        REPO_ROOT / "frontend" / "public" / "layers" / f"{change_path.stem}.png",
+        vmin=threshold,
+        vmax=10.0,
+        colour=(147, 51, 234),
+        floor=threshold,
+    )
+    described: dict[str, Any] = {
+        "url": f"/layers/{overlay.path.name}",
+        **overlay.describe(),
+        "shows": f"absolute backscatter change of at least {threshold:g} dB",
+    }
+    meta["overlay"] = described
+    metadata_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    return described
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--aoi", required=True)
-    parser.add_argument("--pre", type=date.fromisoformat, required=True)
-    parser.add_argument("--post", type=date.fromisoformat, required=True)
+    parser.add_argument(
+        "--overlay-from",
+        type=Path,
+        default=None,
+        help="draw the overlay for an existing metadata file and stop",
+    )
+    parser.add_argument("--aoi")
+    parser.add_argument("--pre", type=date.fromisoformat)
+    parser.add_argument("--post", type=date.fromisoformat)
     parser.add_argument("--band", default="vv", choices=("vv", "vh"))
     parser.add_argument("--threshold-db", type=float, default=3.0)
     parser.add_argument("--window-days", type=int, default=4)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args(argv)
+    if args.overlay_from is not None:
+        spec = write_overlay(args.overlay_from)
+        print(f"overlay {spec['url']}  {spec['width_px']}x{spec['height_px']} px")
+        return 0
+    if not (args.aoi and args.pre and args.post):
+        parser.error("--aoi, --pre and --post are required unless --overlay-from is given")
 
     registry = load_aoi_registry(REPO_ROOT / "configs" / "aoi.yaml")
     aoi = next((a for a in registry.aois if a.id == args.aoi), None)
@@ -206,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
         ],
     }
     (args.out / f"{stem}_metadata.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_overlay(args.out / f"{stem}_metadata.json")
 
     result = payload["result"]
     print(f"\n      separation {separation} days, same orbit")

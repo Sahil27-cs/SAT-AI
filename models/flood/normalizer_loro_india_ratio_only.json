@@ -1,0 +1,18 @@
+{
+  "fold": "loro_india",
+  "bands": {
+    "vv_vh_ratio": {
+      "band": "vv_vh_ratio",
+      "lower": 0.6050796508789062,
+      "upper": 15.757218208312992,
+      "mean": 6.977137246907949,
+      "std": 3.308302596055556,
+      "lower_percentile": 2.0,
+      "upper_percentile": 98.0,
+      "n_samples": 28104494,
+      "n_valid": 28104494,
+      "fitted_on_fold": "loro_india",
+      "fitted_on_partition": "train"
+    }
+  }
+}

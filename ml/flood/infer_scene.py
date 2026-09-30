@@ -105,9 +105,13 @@ GDAL_ENV: dict[str, Any] = {
     # No CPL_VSIL_CURL_ALLOWED_EXTENSIONS: the signed asset ends ".rtc.tiff"
     # and carries a query string, so an extension allow-list rejects the very
     # file this module exists to read.
-    "GDAL_HTTP_MAX_RETRY": "10",
+    "GDAL_HTTP_MAX_RETRY": "4",
     "GDAL_HTTP_RETRY_DELAY": "3",
     "GDAL_HTTP_TIMEOUT": "120",
+    # GDAL retries a 403 like any transient error, so an authentication
+    # failure used to surface as a silent multi-minute hang. Retrying only
+    # the statuses that can actually recover makes it fail fast instead.
+    "GDAL_HTTP_RETRY_CODES": "429,500,502,503,504",
     "VSI_CACHE": "TRUE",
     "VSI_CACHE_SIZE": "134217728",
     "GDAL_CACHEMAX": 512,

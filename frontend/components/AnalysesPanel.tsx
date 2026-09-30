@@ -71,6 +71,18 @@ function Provenance({ analysis }: { analysis: Analysis }) {
     const exposure = analysis.exposure as Record<string, unknown>;
     rows.push(['Exposure', String(exposure.product ?? exposure.dataset ?? 'unknown')]);
   }
+  if (analysis.vulnerability?.available === false) {
+    // Said outright rather than left out: a risk figure computed without a
+    // vulnerability term is an upper bound, and a reader needs to know that.
+    rows.push(['Vulnerability', 'not available, excluded from R']);
+  }
+  if (analysis.overlays && analysis.overlays.length > 0) {
+    const resolution = analysis.overlays[0]?.approx_resolution_m;
+    rows.push([
+      'Map layers',
+      `${analysis.overlays.map((o) => o.label).join(', ')}${resolution ? ` (drawn at ~${Math.round(resolution)} m)` : ''}`,
+    ]);
+  }
 
   if (rows.length === 0) return null;
   return (

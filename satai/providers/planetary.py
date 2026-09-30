@@ -35,6 +35,7 @@ from __future__ import annotations
 import json
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
 from typing import Any
@@ -61,6 +62,7 @@ __all__ = [
 
 STAC_URL = "https://planetarycomputer.microsoft.com/api/stac/v1/search"
 SAS_URL = "https://planetarycomputer.microsoft.com/api/sas/v1/token"
+SIGN_URL = "https://planetarycomputer.microsoft.com/api/sas/v1/sign"
 
 #: Collections this provider searches, and what each one actually contains.
 PC_COLLECTIONS: tuple[str, ...] = ("sentinel-1-rtc", "sentinel-1-grd", "sentinel-2-l2a")
@@ -86,7 +88,7 @@ def _request(
     *,
     payload: dict[str, Any] | None = None,
     timeout: float = 60.0,
-    retries: int = 4,
+    retries: int = 6,
     backoff: float = 1.5,
 ) -> bytes:
     """GET or POST with bounded exponential backoff.
@@ -107,6 +109,21 @@ def _request(
                 body: bytes = response.read()
                 return body
         except urllib.error.HTTPError as exc:
+            if exc.code == 429 and attempt < retries - 1:
+                # Rate limited: the request was fine, the pace was not. Wait as
+                # long as the service asks, or back off, and try again. Treated
+                # as permanent before, a 429 at chip 195 of 446 stopped a
+                # resumable build that only needed to slow down.
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
+                wait = (
+                    float(retry_after)
+                    if retry_after and retry_after.isdigit()
+                    else 10.0 * (attempt + 1)
+                )
+                log.warning("planetary computer rate limit, waiting", extra={"wait_s": wait})
+                time.sleep(wait)
+                last = exc
+                continue
             if exc.code < 500:
                 raise ProviderError(
                     f"Planetary Computer returned HTTP {exc.code} for {url.split('?')[0]}",
@@ -130,6 +147,12 @@ def _request(
     )
 
 
+#: Assets worth carrying on a SceneRef: SAR polarisations, and the optical
+#: bands burn severity needs (NIR, SWIR2) plus the scene classification layer
+#: that masks cloud, shadow, snow and water.
+_KEPT_ASSETS = frozenset({"vv", "vh", "hh", "hv", "B08", "B8A", "B12", "SCL"})
+
+
 def _post_json(url: str, payload: dict[str, Any], *, timeout: float = 60.0) -> Any:
     try:
         return json.loads(_request(url, payload=payload, timeout=timeout))
@@ -140,22 +163,29 @@ def _post_json(url: str, payload: dict[str, Any], *, timeout: float = 60.0) -> A
         ) from exc
 
 
-def sign_href(href: str, collection: str, *, timeout: float = 30.0) -> str:
+def sign_href(href: str, collection: str | None = None, *, timeout: float = 30.0) -> str:
     """Attach a short-lived anonymous SAS token to an asset URL.
 
-    The token is issued per collection and expires within the hour, which is why
-    nothing caches it to disk: a stale token in a manifest is a confusing 403
-    somewhere far from here. Callers sign at the moment of reading.
+    Signed through the ``/sign`` endpoint, which takes the asset URL itself and
+    returns it signed for whatever storage account and container it lives in.
+    The per-collection token endpoint was used first and is not equivalent:
+    Copernicus DEM's collection token does not authenticate against the
+    container its tiles are stored in, and every read came back 403 -- which
+    GDAL then retried quietly for minutes, so the failure looked like a hang.
+
+    Nothing caches the result: tokens expire within the hour, and a stale one in
+    a manifest is a confusing 403 far from here. ``collection`` is accepted for
+    call-site compatibility and recorded in errors only.
     """
+    query = urllib.parse.urlencode({"href": href})
     try:
-        token = json.loads(_request(f"{SAS_URL}/{collection}", timeout=timeout))["token"]
+        signed = json.loads(_request(f"{SIGN_URL}?{query}", timeout=timeout))["href"]
     except (ValueError, KeyError) as exc:
         raise ProviderError(
-            f"could not obtain an anonymous SAS token for {collection!r}: {exc}",
+            f"could not sign an asset URL{f' for {collection!r}' if collection else ''}: {exc}",
             provider="planetary_computer",
         ) from exc
-    separator = "&" if "?" in href else "?"
-    return f"{href}{separator}{token}"
+    return str(signed)
 
 
 class PlanetaryComputerProvider(Provider):
@@ -243,8 +273,13 @@ class PlanetaryComputerProvider(Provider):
                 "assets": {
                     name: asset.get("href")
                     for name, asset in (feature.get("assets") or {}).items()
-                    if name in {"vv", "vh", "hh", "hv"}
+                    if name in _KEPT_ASSETS
                 },
+                # Sentinel-2 L2A reflectance carries a -1000 offset from
+                # processing baseline 04.00 onwards. NBR is a ratio, so an
+                # unapplied offset does not cancel -- it biases every value.
+                "processing_baseline": properties.get("s2:processing_baseline"),
+                "mgrs_tile": properties.get("s2:mgrs_tile"),
             },
         )
 

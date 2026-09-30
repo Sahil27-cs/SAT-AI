@@ -58,6 +58,11 @@ OUTPUT = REPO_ROOT / "ml" / "experiments" / "c2_modality_ablation.json"
 #: rest name the raster they need, because "not executed" without a reason is
 #: indistinguishable from "forgotten".
 ARMS: tuple[tuple[str, str, str | None], ...] = (
+    (
+        "ratio_only",
+        "Sentinel-1 VV/VH dB ratio only (the one band that survives a change of radiometry)",
+        None,
+    ),
     ("vv_only", "Sentinel-1 VV only", None),
     ("vh_only", "Sentinel-1 VH only", None),
     ("sar", "Sentinel-1 VV + VH", None),
@@ -65,14 +70,14 @@ ARMS: tuple[tuple[str, str, str | None], ...] = (
     (
         "sar_rain",
         "Sentinel-1 + GPM IMERG rainfall",
-        "No rainfall raster co-registered to Sen1Floods11 chips. Needs a GPM "
-        "IMERG pull for each chip's acquisition window, resampled to the chip grid.",
+        "Needs GPM IMERG 72-hour rainfall per chip: scripts/build_ancillary.py --rain, "
+        "then train and evaluate the sar_rain arm.",
     ),
     (
         "sar_dem",
-        "Sentinel-1 + Copernicus DEM slope and HAND",
-        "No DEM or HAND raster ships with Sen1Floods11. Needs a Copernicus DEM "
-        "GLO-30 pull per chip footprint plus a HAND derivation.",
+        "Sentinel-1 + Copernicus DEM elevation and slope (HAND not derived)",
+        "Needs Copernicus DEM elevation and slope per chip: scripts/build_ancillary.py "
+        "--dem, then train and evaluate the sar_dem arm. HAND is not derived.",
     ),
     (
         "full",
@@ -82,32 +87,56 @@ ARMS: tuple[tuple[str, str, str | None], ...] = (
 )
 
 
+ANCILLARY = {"elevation_m", "slope_deg", "rain_72h_mm"}
+ABSOLUTE = {"vv_db", "vh_db"}
+
+
 def _finding(executed: dict[str, dict[str, Any]], spread: float) -> str:
     """State what the executed arms show, computed rather than asserted.
 
-    Written as a function because the conclusion changed when the two
-    single-polarisation arms landed: a sentence about the ratio band was true of
-    two arms and became the least interesting thing about four.
+    The arms fall into three groups that answer different questions, so each is
+    summarised on its own: arms built from absolute backscatter, the ratio-only
+    arm, and arms that add ancillary rasters. A single sentence over all of them
+    stopped being true the moment the ratio-only arm landed 0.15 IoU below the
+    rest.
     """
-    ranked = sorted(executed.items(), key=lambda kv: kv[1]["iou"], reverse=True)
-    best_arm, best = ranked[0]
-    worst_arm, worst = ranked[-1]
-    fullest = max(executed.items(), key=lambda kv: kv[1]["n_bands"])
-
-    return (
-        f"All {len(executed)} executed arms fall within {spread:.4f} IoU of each "
-        f"other. The best is {best_arm} at {best['iou']:.4f} with "
-        f"{best['n_bands']} band(s); the worst is {worst_arm} at "
-        f"{worst['iou']:.4f}. The fullest stack, {fullest[0]} with "
-        f"{fullest[1]['n_bands']} bands, scores {fullest[1]['iou']:.4f} -- lower "
-        f"than a single {best_arm.split('_')[0].upper()} polarisation. "
-        "On this dataset, with this architecture, adding SAR modalities beyond "
-        "one polarisation produces no measurable benefit. The spread is smaller "
-        "than the per-chip variance and, on a single seed per arm, smaller than "
-        "what seed variation would plausibly produce -- so the defensible claim "
-        "is that these arms are indistinguishable, not that fewer bands are "
-        "better."
-    )
+    sentences: list[str] = []
+    absolute = {
+        a: v
+        for a, v in executed.items()
+        if set(v["bands"]) & ABSOLUTE and not set(v["bands"]) & ANCILLARY
+    }
+    if absolute:
+        ious = [v["iou"] for v in absolute.values()]
+        best = max(absolute, key=lambda a: absolute[a]["iou"])
+        sentences.append(
+            f"The {len(absolute)} arms built from absolute backscatter fall within "
+            f"{max(ious) - min(ious):.4f} IoU of each other; the best is {best} at "
+            f"{absolute[best]['iou']:.4f}. On a single seed per arm that spread is "
+            "smaller than seed variation would plausibly produce, so these arms "
+            "are indistinguishable: adding polarisations or the ratio band to one "
+            "polarisation brings no measurable benefit."
+        )
+    if "ratio_only" in executed and absolute:
+        best_abs = max(v["iou"] for v in absolute.values())
+        ratio = executed["ratio_only"]["iou"]
+        sentences.append(
+            f"The ratio band alone scores {ratio:.4f}, {best_abs - ratio:.4f} below the "
+            "best absolute arm. That band is the one input that survives a change "
+            "of radiometric product -- a common offset on both polarisations cancels "
+            "in VV - VH -- and it carries too little of the signal on its own. The "
+            "flood signal lives in absolute backscatter, which is exactly what does "
+            "not transfer between products."
+        )
+    reference = executed.get("sar_ratio")
+    for arm in ("sar_dem", "sar_rain", "full"):
+        if arm in executed and reference:
+            delta = executed[arm]["iou"] - reference["iou"]
+            sentences.append(
+                f"{arm} scores {executed[arm]['iou']:.4f}, {delta:+.4f} against the "
+                f"same SAR stack without the ancillary bands."
+            )
+    return " ".join(sentences)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -121,7 +150,11 @@ def main(argv: list[str] | None = None) -> int:
 
     for arm, description, blocker in ARMS:
         path = RESULTS / f"test_{args.fold}_{arm}.json"
-        if blocker is not None:
+        # An arm counts as executed when its evaluation report exists, whatever
+        # blocker it was declared with. The blocker is what to say when it does
+        # not -- the rainfall and terrain arms were once blocked on data, and a
+        # hard-coded "blocked" would outlive the data arriving.
+        if not path.is_file() and blocker is not None:
             blocked[arm] = blocker
             continue
         if not path.is_file():
@@ -161,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     report = {
         "experiment": "C2_modality_ablation",
         "run_at": datetime.now(UTC).isoformat(),
-        "status": "PARTIALLY EXECUTED",
+        "status": "EXECUTED" if not blocked else "PARTIALLY EXECUTED",
         "fold": args.fold,
         "test_region": "India",
         "protocol": (
@@ -176,9 +209,12 @@ def main(argv: list[str] | None = None) -> int:
         "finding": _finding(executed, spread),
         "spread_across_executed_arms_iou": spread,
         "caveats": [
-            f"{len(executed)} arms, not five. The rainfall and terrain arms need "
-            "ancillary rasters that have not been acquired, and are reported as "
-            "blocked rather than approximated.",
+            (
+                f"{len(executed)} of {len(executed) + len(blocked)} arms executed; the "
+                f"rest are reported as blocked with what they need, not approximated."
+                if blocked
+                else f"All {len(executed)} arms executed."
+            ),
             "Single seed per arm. With differences this small the honest "
             "statement is that the arms are indistinguishable at this sample "
             "size, not that one is better. Separating them would need repeated "

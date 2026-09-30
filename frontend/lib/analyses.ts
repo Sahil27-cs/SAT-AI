@@ -39,7 +39,12 @@ export interface BandComparison {
 export interface Analysis {
   aoi: string;
   hazard: string;
-  kind: 'model_inference' | 'historical_analysis' | 'observation' | 'model_explanation';
+  kind:
+    | 'model_inference'
+    | 'historical_analysis'
+    | 'observation'
+    | 'model_explanation'
+    | 'risk_analysis';
   status: AnalysisStatus;
   source_kind: SourceKind;
   headline?: string;
@@ -64,11 +69,26 @@ export interface Analysis {
   population?: Record<string, unknown>;
   /** Servable geometry, present only where it is small enough to ship. */
   geometry?: { type: string; features: unknown[] } | null;
+  /** Small lon/lat PNGs of raster results, each tagged with its layer control. */
+  overlays?: MapOverlay[];
+  vulnerability?: { available?: boolean; reason?: string } | null;
   detections?: FireDetection[];
   artifacts_on_disk?: Record<string, string>;
   artifacts_served?: boolean;
   artifacts_not_served_because?: string;
   caveats: string[];
+}
+
+/** Which layer control an overlay belongs to. */
+export type OverlayLayer = 'flood' | 'wildfire' | 'cyclone' | 'risk' | 'exposure' | 'damage';
+
+export interface MapOverlay {
+  layer: OverlayLayer;
+  label: string;
+  url: string;
+  coordinates: [number, number][];
+  approx_resolution_m?: number;
+  note?: string;
 }
 
 export interface FireDetection {
@@ -225,4 +245,17 @@ export const EXPERIMENTS_REGISTER: RegisteredExperiment[] = catalogue.experiment
 /** An experiment counts as executed when it produced a result, not when it exists. */
 export function executedExperiments(): RegisteredExperiment[] {
   return EXPERIMENTS_REGISTER.filter((e) => e.status.includes('EXECUTED'));
+}
+
+/**
+ * Every overlay that may be drawn, from validated analyses only.
+ *
+ * The filter is the honesty boundary for rasters: an analysis that ran but did
+ * not pass its validation has no overlay in this list, whatever is on disk.
+ */
+export function mapOverlays(): MapOverlay[] {
+  return ANALYSED_AREAS.flatMap((a) => a.analyses)
+    .filter((a) => a.displayable === true)
+    .flatMap((a) => a.overlays ?? [])
+    .filter((o) => o.coordinates?.length === 4);
 }

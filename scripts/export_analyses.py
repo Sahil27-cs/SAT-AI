@@ -90,7 +90,9 @@ def flood_scene_entries() -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     for path in sorted((PROCESSED / "flood_scenes").glob("*_metadata.json")):
         meta = _load(path)
-        if meta is None:
+        # The folder also holds the baseline extent and the risk run; only U-Net
+        # records carry a distribution gate.
+        if meta is None or meta.get("model") != "flood_unet":
             continue
 
         gate = meta.get("distribution_gate") or {}
@@ -106,6 +108,15 @@ def flood_scene_entries() -> list[dict[str, Any]]:
                     f"{meta['flooded_area_km2']:,.1f} km2 of "
                     f"{meta['observed_area_km2']:,.1f} km2 observed"
                 ),
+                # The same numbers as fields, so a consumer never parses them
+                # out of prose. Named "raw" because they are the model's output
+                # before any validation, which on a failed gate is all they are.
+                "result": {
+                    "raw_extent_km2": round(meta["flooded_area_km2"], 1),
+                    "observed_area_km2": round(meta["observed_area_km2"], 1),
+                    "raw_fraction_of_observed": round(meta["flooded_fraction_of_observed"], 4),
+                    "validated": passed,
+                },
                 # Withheld deliberately when the gate refused the transfer. The
                 # artifacts exist; displaying them as a flood map would present
                 # a result the project's own instrument rejected.
@@ -161,6 +172,99 @@ def flood_scene_entries() -> list[dict[str, Any]]:
     return entries
 
 
+def _overlay(layer: str, label: str, spec: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """One map overlay, tagged with the layer control it belongs to."""
+    if not spec or not spec.get("url") or len(spec.get("coordinates") or []) != 4:
+        return []
+    return [{"layer": layer, "label": label, **spec}]
+
+
+def otsu_flood_entries() -> list[dict[str, Any]]:
+    """Flood extent from the evaluated baseline over a real scene."""
+    entries: list[dict[str, Any]] = []
+    for path in sorted((PROCESSED / "flood_scenes").glob("*_metadata.json")):
+        meta = _load(path)
+        if meta is None or meta.get("analysis") != "flood_extent_otsu_scene":
+            continue
+        result, method = meta.get("result", {}), meta.get("method", {})
+        entries.append(
+            {
+                "aoi": meta["aoi"],
+                "hazard": "flood",
+                "kind": "model_inference",
+                "status": ANALYSIS_COMPLETE,
+                "source_kind": "model",
+                "headline": (
+                    f"{result['flood_area_km2']:,.1f} km2 flood water of "
+                    f"{result['observed_area_km2']:,.0f} km2 observed "
+                    f"({result['permanent_water_removed_km2']:,.1f} km2 permanent river removed)"
+                ),
+                "displayable": True,
+                "observation": meta.get("observation"),
+                "model": {
+                    "name": "Otsu baseline",
+                    "version": method.get("version"),
+                    "bands": [method.get("band")],
+                    "held_out_india_iou": method.get("held_out_india_iou"),
+                },
+                "processing": {"processed_at": meta.get("processed_at")},
+                "method": method,
+                "tiles": meta.get("tiles"),
+                "result": result,
+                "agreement_with_unet": meta.get("agreement_with_unet"),
+                "overlays": _overlay("flood", "Flood extent (Otsu baseline)", meta.get("overlay")),
+                "artifacts_on_disk": meta.get("artifacts"),
+                "artifacts_served": True,
+                "caveats": meta.get("caveats", []),
+            }
+        )
+    return entries
+
+
+def flood_risk_entries() -> list[dict[str, Any]]:
+    """Observed flood extent x real population, through the risk engine."""
+    entries: list[dict[str, Any]] = []
+    for path in sorted((PROCESSED / "flood_scenes").glob("*_metadata.json")):
+        meta = _load(path)
+        if meta is None or meta.get("analysis") != "flood_risk_scene":
+            continue
+        result, layers = meta.get("result", {}), meta.get("layers", {})
+        entries.append(
+            {
+                "aoi": meta["aoi"],
+                "hazard": "flood",
+                "kind": "risk_analysis",
+                "status": ANALYSIS_COMPLETE,
+                "source_kind": "index",
+                "headline": (
+                    f"about {result['people_in_flood_water_estimate']:,} people in "
+                    f"observed flood water; {result['people_in_cells_touched_by_flood']:,} "
+                    f"in cells it reached"
+                ),
+                "displayable": True,
+                "formulation": meta.get("formulation"),
+                "layers": layers,
+                "exposure": layers.get("exposure"),
+                "vulnerability": layers.get("vulnerability"),
+                "risk": {**result, "formulation": meta.get("formulation")},
+                "result": result,
+                "overlays": [
+                    *_overlay(
+                        "exposure",
+                        "Population (WorldPop 2020)",
+                        (layers.get("exposure") or {}).get("overlay"),
+                    ),
+                    *_overlay(
+                        "risk", "Flood risk index", (layers.get("risk") or {}).get("overlay")
+                    ),
+                ],
+                "artifacts_served": True,
+                "caveats": meta.get("caveats", []),
+            }
+        )
+    return entries
+
+
 def cyclone_entries() -> list[dict[str, Any]]:
     """One entry per historical cyclone analysis, with the observed track."""
     entries: list[dict[str, Any]] = []
@@ -188,6 +292,16 @@ def cyclone_entries() -> list[dict[str, Any]]:
                 "risk": meta.get("risk"),
                 "population": meta.get("population"),
                 "geometry": meta.get("track_geojson"),
+                "overlays": [
+                    *_overlay(
+                        "cyclone",
+                        "Peak modelled wind",
+                        (meta.get("overlays") or {}).get("peak_wind"),
+                    ),
+                    *_overlay(
+                        "risk", "Cyclone risk index", (meta.get("overlays") or {}).get("risk")
+                    ),
+                ],
                 "artifacts_on_disk": meta.get("artifacts"),
                 "artifacts_served": False,
                 "caveats": meta.get("caveats", []),
@@ -216,14 +330,18 @@ def damage_entries() -> list[dict[str, Any]]:
                     f"between {pair['pre_acquired_at'][:10]} and "
                     f"{pair['post_acquired_at'][:10]}"
                 ),
-                # The change field is a full raster; the summary is what travels.
-                "displayable": False,
-                "withheld_because": TOO_LARGE_TO_SERVE,
-                "withheld_reason": (
+                # The full raster is not served; a downsampled lon/lat picture of
+                # it is, when one has been drawn.
+                "displayable": bool(meta.get("overlay")),
+                "withheld_because": None if meta.get("overlay") else TOO_LARGE_TO_SERVE,
+                "withheld_reason": None
+                if meta.get("overlay")
+                else (
                     "The change field is a full-resolution raster and is not "
                     "served. Its summary and provenance are. This analysis "
                     "passed; it is undeliverable, not unvalidated."
                 ),
+                "overlays": _overlay("damage", "Backscatter change", meta.get("overlay")),
                 "not_a_prediction": meta.get("not_a_prediction"),
                 "observation": {
                     "scene_id": pair.get("post_scene_id"),
@@ -240,6 +358,51 @@ def damage_entries() -> list[dict[str, Any]]:
                 "result": result,
                 "artifacts_on_disk": meta.get("artifacts"),
                 "artifacts_served": False,
+                "caveats": meta.get("caveats", []),
+            }
+        )
+    return entries
+
+
+def burn_severity_entries() -> list[dict[str, Any]]:
+    """Sentinel-2 dNBR burn severity, one entry per pre/post pair."""
+    entries: list[dict[str, Any]] = []
+    for path in sorted((PROCESSED / "wildfire").glob("*_metadata.json")):
+        meta = _load(path)
+        if meta is None or meta.get("analysis") != "burn_severity_dnbr":
+            continue
+        pair, result = meta.get("pair", {}), meta.get("result", {})
+        entries.append(
+            {
+                "aoi": meta["aoi"],
+                "hazard": "wildfire",
+                "kind": "historical_analysis",
+                "status": ANALYSIS_COMPLETE,
+                "source_kind": "derived",
+                "headline": (
+                    f"{result['net_burned_area_km2']:,.0f} km2 net burned forest "
+                    f"({result['burned_area_km2']:,.0f} km2 above moderate-low, "
+                    f"minus {result['noise_mirror_km2']:,.0f} km2 seasonal noise)"
+                ),
+                "displayable": True,
+                "not_a_prediction": meta.get("not_a_prediction"),
+                "event": meta.get("event"),
+                "observation": {
+                    "scene_id": pair.get("post_scene_id"),
+                    "acquired_at": pair.get("post_acquired_at"),
+                    "pre_scene_id": pair.get("pre_scene_id"),
+                    "pre_acquired_at": pair.get("pre_acquired_at"),
+                    "provider": pair.get("provider"),
+                    "collection": pair.get("collection"),
+                    "separation_days": pair.get("separation_days"),
+                    "mgrs_tile": pair.get("mgrs_tile"),
+                    "resolution_m": meta.get("method", {}).get("resolution_m"),
+                },
+                "method": meta.get("method"),
+                "result": result,
+                "overlays": _overlay("wildfire", "Burn severity (dNBR)", meta.get("overlay")),
+                "artifacts_on_disk": meta.get("artifacts"),
+                "artifacts_served": True,
                 "caveats": meta.get("caveats", []),
             }
         )
@@ -327,34 +490,60 @@ def experiment_register() -> list[dict[str, Any]]:
 
     # --- C1: grounded tool invocation ---------------------------------------
     validator = _load(EXPERIMENTS / "validator_validation" / "validator_validation.json")
-    register.append(
-        {
-            "id": "C1",
-            "title": "Grounded tool invocation and refusal",
-            "hypothesis": (
-                "A language layer constrained to tool output can be held to "
-                "stating only values traceable to a tool result, and made to "
-                "refuse questions outside its competence."
-            ),
-            "instrument": {
-                "report": relative_to_repo(EXPERIMENTS / "validator_validation")
-                if validator
-                else None,
-                "detection_accuracy": (validator or {}).get("headline"),
-                "n_cases": (validator or {}).get("n_cases"),
-                "status": "EXECUTED" if validator else "NOT RUN",
-            },
-            "status": "INSTRUMENT VALIDATED; BENCHMARK NOT RUN",
-            "blocker": (
-                "The 28-question benchmark has not been run against the live "
-                "model. The loop, the validator and the audit log all exist."
-            ),
-            "caveats": [
-                "The validated instrument measures detection on constructed "
-                "failure modes, not coverage of all possible ones.",
-            ],
+    benchmark = _load(EXPERIMENTS / "c1_benchmark" / "c1_benchmark_results.json")
+    entry: dict[str, Any] = {
+        "id": "C1",
+        "title": "Grounded tool invocation and refusal",
+        "hypothesis": (
+            "A language layer constrained to tool output can be held to "
+            "stating only values traceable to a tool result, and made to "
+            "refuse questions outside its competence."
+        ),
+        "instrument": {
+            "report": relative_to_repo(EXPERIMENTS / "validator_validation") if validator else None,
+            "detection_accuracy": (validator or {}).get("headline"),
+            "n_cases": (validator or {}).get("n_cases"),
+            "status": "EXECUTED" if validator else "NOT RUN",
+        },
+        "caveats": [
+            "The validated instrument measures detection on constructed "
+            "failure modes, not coverage of all possible ones.",
+        ],
+    }
+    if benchmark is None:
+        entry["status"] = "INSTRUMENT VALIDATED; BENCHMARK NOT RUN"
+        entry["blocker"] = (
+            "The 28-question benchmark has not been run against the live "
+            "model. The loop, the validator and the audit log all exist."
+        )
+    else:
+        measured = int(benchmark["n_measured"])
+        total = int(benchmark["n_questions"])
+        # A partial run is reported as partial. Its rates are real but their
+        # denominators are small, and the missing turns are named with why.
+        complete = measured == total
+        entry["status"] = "EXECUTED" if complete else f"PARTIAL ({measured}/{total} MEASURED)"
+        entry["benchmark"] = {
+            "report": relative_to_repo(EXPERIMENTS / "c1_benchmark" / "c1_benchmark_results.json"),
+            "model": benchmark.get("model"),
+            "endpoint": benchmark.get("endpoint"),
+            "runs": benchmark.get("runs") or [benchmark.get("run_at")],
+            "n_questions": total,
+            "n_measured": measured,
+            "n_model_in_loop": benchmark.get("n_model_in_loop"),
+            "metrics": benchmark.get("metrics"),
+            "denominators": benchmark.get("denominators"),
+            "unmeasured": [u["id"] for u in benchmark.get("unmeasured", [])],
         }
-    )
+        if not complete:
+            reasons = {u["reason"][:80] for u in benchmark.get("unmeasured", [])}
+            entry["blocker"] = (
+                f"{total - measured} of {total} questions were not measured: "
+                + "; ".join(sorted(reasons))
+                + ". Resume with python -m ml.experiments.run_c1_benchmark --resume."
+            )
+        entry["caveats"] = [*entry["caveats"], *benchmark.get("caveats", [])]
+    register.append(entry)
 
     # --- C2: modality loss ---------------------------------------------------
     c2 = _load(EXPERIMENTS / "c2_modality_ablation.json")
@@ -478,11 +667,14 @@ def main() -> int:
     flood = flood_scene_entries()
     cyclone = cyclone_entries()
     damage = damage_entries()
+    burns = burn_severity_entries()
+    otsu = otsu_flood_entries()
+    flood_risk = flood_risk_entries()
     wildfire = wildfire_entry()
     xai = xai_entries()
 
     by_area: dict[str, list[dict[str, Any]]] = {}
-    for entry in [*flood, *cyclone, *damage]:
+    for entry in [*flood, *otsu, *flood_risk, *cyclone, *damage, *burns]:
         by_area.setdefault(entry["aoi"], []).append(entry)
     if wildfire:
         for area in wildfire["per_area"]:
