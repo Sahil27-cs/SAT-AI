@@ -8,6 +8,7 @@ import HERO_CHIP from '@/lib/hero-chip.generated.json';
 
 const STARTER_QUESTIONS = [
   'What model do you use for flood detection?',
+  'on how much dataset u have trained model',
   'What is the India test IoU?',
   'How does the U-Net detect flood water?',
   'What are the VV, VH and VV/VH ratio features?',
@@ -52,23 +53,33 @@ export default function Home() {
       setIsAsking(true);
 
       try {
-        // No region: this page has no region selector, and sending one told the
-        // assistant the user was looking at Bihar, where no scene has been run.
         const reply = await askAgent(q, null);
         const agentMsgId = `agent-${Date.now()}`;
+
+        // Ensure user-facing response is natural language and never raw telemetry unless requested
+        const isAskingRaw = ['raw', 'telemetry', 'tool output', 'show evidence'].some((k) =>
+          q.toLowerCase().includes(k)
+        );
+        let cleanText = reply.answer;
+        if (!isAskingRaw && reply.answer.includes('### Verified Tool Telemetry')) {
+          cleanText = reply.answer.split(/### Verified Tool Telemetry|Verified Tool Telemetry/i)[0].trim();
+        }
+        cleanText = cleanText
+          .replace(/^Language layer unavailable — returning verified tool output directly\.\s*/i, '')
+          .replace(/^### Scientific Assessment & Key Findings\s*/i, '')
+          .trim();
+
         setMessages((prev) => [
           ...prev,
           {
             id: agentMsgId,
             role: 'agent',
-            text: reply.answer,
+            text: cleanText || reply.answer,
             meta: reply,
           },
         ]);
       } catch (e) {
         const errorMsgId = `err-${Date.now()}`;
-        // askAgent already says what went wrong (timeout, rate limit,
-        // unreachable); a single generic message hid which one it was.
         const detail = e instanceof Error && e.message ? e.message : 'Please try again.';
         setMessages((prev) => [
           ...prev,

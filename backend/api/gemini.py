@@ -51,11 +51,7 @@ API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 #: actually reach.
 DEFAULT_MODEL = "gemini-2.5-flash"
 
-#: Where one refused call goes instead. This key has been told
-#: "gemini-2.5-flash is no longer available to new users" before, and free-tier
-#: quota is counted per model, so a second identifier is what keeps the
-#: assistant answering when the first is retired or spent. Overridden by
-#: GEMINI_FALLBACK_MODEL. Whichever model answers is recorded in the usage.
+#: Where one refused call goes instead.
 FALLBACK_MODEL = "gemini-3.8-flash"
 
 TIMEOUT_S = 45.0
@@ -115,26 +111,34 @@ _ILLEGAL_IN_HEADER = ("\r", "\n", "\t", "\0")
 
 
 def _api_key() -> str:
-    """The configured key, with copy-paste whitespace removed.
-
-    Stripped rather than used verbatim: a leading or trailing space or newline
-    is invisible in a dashboard, makes the key unusable as a header value, and
-    produces an error that points nowhere near the cause.
-    """
-    return os.environ.get("GEMINI_API_KEY", "").strip()
+    """The configured key, with copy-paste whitespace and surrounding text removed."""
+    raw = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not raw:
+        return ""
+    cleaned = raw.strip('"').strip("'")
+    if " " in cleaned:
+        for part in cleaned.split():
+            clean_part = part.strip('"').strip("'").strip(",")
+            if clean_part.startswith("AIza"):
+                return clean_part
+        if "=" in cleaned:
+            after_eq = cleaned.split("=", 1)[1].strip()
+            for part in after_eq.split():
+                clean_part = part.strip('"').strip("'").strip(",")
+                if clean_part.startswith("AIza"):
+                    return clean_part
+            return after_eq.strip()
+    return cleaned
 
 
 def key_problem() -> str | None:
-    """Why the configured key cannot be used, or None if it looks usable.
-
-    Deliberately describes the defect without quoting any part of the key. The
-    point is to tell an operator what to fix, not to print a credential into a
-    health response or a log line.
-    """
+    """Why the configured key cannot be used, or None if it looks usable."""
     raw = os.environ.get("GEMINI_API_KEY")
     if raw is None or not raw.strip():
         return "GEMINI_API_KEY is not set"
-    key = raw.strip()
+    key = _api_key()
+    if not key:
+        return "GEMINI_API_KEY is not set"
     if any(ch in key for ch in _ILLEGAL_IN_HEADER):
         return (
             "GEMINI_API_KEY contains a line break or tab, which cannot be sent "
