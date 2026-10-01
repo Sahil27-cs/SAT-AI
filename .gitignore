@@ -26,6 +26,8 @@ data/interim/**
 !data/processed/**/
 !data/processed/flood/*_metadata.json
 !data/processed/flood/prediction_manifest.json
+!data/processed/district_impact/*.json
+!data/processed/exposure/*.json
 
 # Raster / vector / archive formats, wherever they appear
 *.tif
@@ -62,6 +64,7 @@ models/**
 # number came from a real run.
 !models/*/
 !models/**/*.json
+!models/**/*.png
 
 !models/.gitkeep
 *.pt
@@ -133,6 +136,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # --- Editors / OS ---
+.claude/
 .vscode/
 !.vscode/extensions.json
 .idea/

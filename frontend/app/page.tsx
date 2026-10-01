@@ -4,16 +4,20 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { askAgent, type ChatReply, answeredBy } from '@/lib/api';
 import { FormattedAnswer } from '@/components/FormattedAnswer';
+import { BiharImpactSection } from '@/components/BiharImpactSection';
 import HERO_CHIP from '@/lib/hero-chip.generated.json';
 
 const STARTER_QUESTIONS = [
-  'What model did you train?',
-  'How much data was used to train it?',
+  'Which Bihar district is most affected?',
+  'How much area is flooded?',
+  'How much cropland is affected?',
+  'Which areas have the highest flood impact?',
+  'What changed after the flood?',
+  'Which areas are historically flood-prone?',
+  'How reliable is this analysis?',
   'What is the India test IoU?',
-  'How does U-Net detect flood water?',
-  'What are VV, VH and VV/VH ratio?',
+  'What model did you train?',
   'What do the XAI results mean?',
-  "Why can't SAT-AI predict tomorrow's flood?",
 ];
 
 interface ChatMessage {
@@ -179,6 +183,18 @@ export default function Home() {
                   }}
                 >
                   Explainability
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#bihar-impact"
+                  className="nav-link"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToSection('bihar-impact');
+                  }}
+                >
+                  Bihar Impact
                 </a>
               </li>
               <li>
@@ -657,7 +673,10 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 11. AI ASSISTANT — MAJOR FEATURE */}
+        {/* 11. BIHAR FLOOD IMPACT ASSESSMENT & INTERACTIVE MAP */}
+        <BiharImpactSection />
+
+        {/* 12. AI ASSISTANT — MAJOR FEATURE */}
         <section id="assistant" className="assistant-section">
           <div className="section-header centered">
             <div className="section-tag">Interactive Research Copilot</div>

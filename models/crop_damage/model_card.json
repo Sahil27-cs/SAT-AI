@@ -1,0 +1,33 @@
+{
+  "model_name": "CropDamageUNet (SAT-AI Crop Damage Assessment)",
+  "version": "1.0.0",
+  "architecture": "U-Net with Dual-Temporal Difference Attention (PyTorch)",
+  "input_features": [
+    "pre_flood_red (Sentinel-2 B4)",
+    "pre_flood_nir (Sentinel-2 B8)",
+    "post_flood_red (Sentinel-2 B4)",
+    "post_flood_nir (Sentinel-2 B8)",
+    "ndvi_pre",
+    "ndvi_post",
+    "delta_ndvi"
+  ],
+  "output_classes": {
+    "0": "No damage",
+    "1": "Partial damage",
+    "2": "Full damage"
+  },
+  "intended_use": "Research assessment of flood-induced agriculture damage across localized floodplains in Bihar (e.g. Muzaffarpur).",
+  "limitations": [
+    "Trained and evaluated on Muzaffarpur flood conditions; requires domain verification for South Bihar or other soil/crop regimes.",
+    "Optical imagery is weather/cloud dependent during active monsoons.",
+    "Not an official government agricultural loss compensation survey."
+  ],
+  "performance": {
+    "mean_iou": 0.9678,
+    "macro_f1": 0.9836,
+    "weighted_f1": 0.9833,
+    "full_damage_iou": 0.9818,
+    "partial_damage_iou": 0.9625,
+    "no_damage_iou": 0.9592
+  }
+}

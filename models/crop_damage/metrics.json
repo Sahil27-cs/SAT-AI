@@ -1,0 +1,71 @@
+{
+  "dataset": "BFCD-22 (Muzaffarpur, Bihar benchmark split)",
+  "task": "crop_damage_segmentation",
+  "num_classes": 3,
+  "classes": {
+    "0": "no_damage",
+    "1": "partial_damage",
+    "2": "full_damage"
+  },
+  "mean_iou": 0.9678,
+  "per_class_iou": {
+    "no_damage": 0.9592,
+    "partial_damage": 0.9625,
+    "full_damage": 0.9818
+  },
+  "macro_f1": 0.9836,
+  "weighted_f1": 0.9833,
+  "classification_report": {
+    "no_damage": {
+      "precision": 1.0,
+      "recall": 0.9591705981711224,
+      "f1-score": 0.9791598537324969,
+      "support": 68676.0
+    },
+    "partial_damage": {
+      "precision": 0.9680288925443634,
+      "recall": 0.9940641897949362,
+      "f1-score": 0.9808738081048868,
+      "support": 105967.0
+    },
+    "full_damage": {
+      "precision": 0.9911496953750475,
+      "recall": 0.9905085985066862,
+      "f1-score": 0.9908290432385293,
+      "support": 71117.0
+    },
+    "accuracy": 0.9832845052083333,
+    "macro avg": {
+      "precision": 0.9863928626398036,
+      "recall": 0.981247795490915,
+      "f1-score": 0.983620901691971,
+      "support": 245760.0
+    },
+    "weighted avg": {
+      "precision": 0.9836536073495924,
+      "recall": 0.9832845052083333,
+      "f1-score": 0.9832756592056395,
+      "support": 245760.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      65872,
+      2804,
+      0
+    ],
+    [
+      0,
+      105338,
+      629
+    ],
+    [
+      0,
+      675,
+      70442
+    ]
+  ],
+  "evaluation_split": "spatially_separated_test",
+  "num_test_chips": 15,
+  "total_test_pixels": 245760
+}

@@ -1,0 +1,21 @@
+{
+  "dataset_name": "NRSC/ISRO Bihar Flood Hazard Zonation Atlas",
+  "source_url": "https://bhuvan.nrsc.gov.in/disaster/disaster.php?id=flood",
+  "license": "National Remote Sensing Centre (NRSC), Indian Space Research Organisation (ISRO) Open Disaster Management Support",
+  "download_date": "2026-10-01",
+  "spatial_resolution": "Multi-mission optical and microwave satellite synthesis (nominal 30m - 50m resolution)",
+  "temporal_coverage": "Historical multi-decadal observation record: 1998 to 2019 (22 flood years)",
+  "geographic_coverage": "Bihar state, India (district and block level hazard zonation)",
+  "label_definition": {
+    "1": "Very Low Hazard (inundated 1-2 times in 22 years)",
+    "2": "Low Hazard (inundated 3-5 times in 22 years)",
+    "3": "Moderate Hazard (inundated 6-10 times in 22 years)",
+    "4": "High Hazard (inundated 11-15 times in 22 years)",
+    "5": "Very High Hazard (inundated >15 times in 22 years)"
+  },
+  "known_limitations": [
+    "Represents HISTORICAL frequency of flood inundation over 1998-2019, NOT current or active inundation.",
+    "Must not be equated with present-day flood status or dynamic risk for any single day.",
+    "Zonation does not reflect infrastructure built after 2019 (such as newly constructed embankments or drainage upgrades)."
+  ]
+}

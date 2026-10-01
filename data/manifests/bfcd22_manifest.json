@@ -1,0 +1,19 @@
+{
+  "dataset_name": "BFCD-22 (Bihar Flood-Impacted Croplands Dataset)",
+  "source_url": "https://arxiv.org/abs/2601.03884 (Associated publication: FLNet: Flood-Induced Agriculture Damage Assessment using Super Resolution of Satellite Images)",
+  "license": "Research Use Only / Contact Authors (Direct public open repository download is currently not indexed)",
+  "download_date": "2026-10-01 (Documentation & Adapter specification date; local data directory data/raw/bfcd22/ ready for user archive placement)",
+  "spatial_resolution": "Sentinel-2 (10m) and PlanetScope (3m)",
+  "temporal_coverage": "October 2022 Bihar flood event (pre-flood and post-flood pair)",
+  "geographic_coverage": "Muzaffarpur district, Bihar, India (specific riverine cropland AOI; does NOT cover all 38 Bihar districts)",
+  "label_definition": {
+    "0": "No damage (healthy cropland / unaffected vegetation)",
+    "1": "Partial damage (submerged foliage, lodging, silt deposition, reduced NDVI)",
+    "2": "Full damage (complete crop washout, permanent water stagnation, severe vegetation mortality)"
+  },
+  "known_limitations": [
+    "Geographically localized to Muzaffarpur study zone; cannot be generalized across all Bihar agro-climatic zones without domain verification.",
+    "Direct public download link is not freely hosted online without institutional author request; user must place raw files into data/raw/bfcd22/.",
+    "Optical Sentinel-2 imagery is cloud-dependent during monsoonal cloud cover."
+  ]
+}

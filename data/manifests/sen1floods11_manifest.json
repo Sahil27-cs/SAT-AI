@@ -1,0 +1,19 @@
+{
+  "dataset_name": "Sen1Floods11 v1.1 HandLabeled",
+  "source_url": "https://github.com/cloudtostreet/Sen1Floods11",
+  "license": "CC-BY-4.0",
+  "download_date": "2026-09-26",
+  "spatial_resolution": "10m",
+  "temporal_coverage": "2016 to 2019 (11 flood events)",
+  "geographic_coverage": "Global (11 flood events; held-out India test: 68 chips acquired on 2016-08-12)",
+  "label_definition": {
+    "-1": "No data / unannotated",
+    "0": "Non-water",
+    "1": "Water (standing or flooded)"
+  },
+  "known_limitations": [
+    "Permanent water bodies and flood-inundated surfaces share the same label (1); flood extent requires baseline permanent water removal.",
+    "Urban double-bounce causes flooded built-up areas to exhibit high radar backscatter rather than characteristic specular low backscatter.",
+    "Vegetation canopies can attenuate or mask underlying flood water in C-band SAR."
+  ]
+}

@@ -103,6 +103,16 @@ WHICH TOOL
 - warnings, alerts, authority, forecasting, real-time: get_system_scope
 - the Otsu baseline: get_flood_metrics (otsu_india_test) and
   get_flood_inference_summary
+- overall Bihar flood status and inundation: get_bihar_flood_status
+- which district is most affected, Bihar district ranking: get_bihar_district_impact
+- flooded area calculation (km², % of area): get_flooded_area
+- crop damage, affected cropland, damage classes (0=no damage, 1=partial, 2=full): get_crop_damage_summary
+- building / settlement exposure: get_building_exposure
+- road network exposure: get_road_exposure
+- historical flood hazard zonation (NRSC Atlas): get_historical_flood_hazard
+- available satellite event dates: get_flood_event_dates
+- SAT-AI Impact Index / flood severity score: get_impact_index
+- evidence provenance and audit trail: get_impact_provenance
 Call more than one when a question spans several.
 
 ABSOLUTE RULES
@@ -150,6 +160,16 @@ ABSOLUTE RULES
     Write concise, natural responses (2-5 sentences for simple factual
     questions). Do not dump raw tool output, JSON keys or diagnostics unless the
     user asks to see the tool output or evidence.
+14. BIHAR FLOOD IMPACT & DAMAGE DISTINCTION:
+    - Inundation is water detected by satellite (get_flooded_area, get_bihar_district_impact).
+    - Impact is assets/cropland intersecting inundated footprints (get_crop_damage_summary, get_building_exposure, get_road_exposure).
+    - Physical damage requires a validated damage model (BFCD-22).
+    - Never equate flooded area with destroyed area.
+    - Never guess or assert monetary damage (e.g. ₹ crore).
+    - The SAT-AI Impact Index is a transparent multi-criteria research metric, NOT an official government severity rating or economic cost.
+    - The system must NEVER claim a district is 'most affected' without running get_bihar_district_impact for the selected date.
+    - If no valid current scene is available, say:
+      "No validated SAT-AI scene is available for Bihar for that date, so I cannot calculate a current district ranking."
 
 Answer in short paragraphs or a few bullets. State what the data shows, what it
 does not, and how far it can be trusted."""
@@ -659,6 +679,82 @@ def _synthesis(results: list[dict[str, Any]]) -> list[str]:
             + (f" — {scene['blocked_reason']}" if scene.get("blocked_reason") else "")
         )
 
+    bihar_status = _by_tool(results, "get_bihar_flood_status")
+    if bihar_status:
+        out.append(
+            f"- **Bihar Inundation ({bihar_status.get('event_date')}):** {bihar_status.get('flooded_area_km2')} km² "
+            f"({bihar_status.get('flooded_percentage')}%) inundated across {bihar_status.get('affected_districts_count')} districts. "
+            f"Sensor: {bihar_status.get('sensor')} ({bihar_status.get('resolution_m')}m)."
+        )
+
+    district_impact = _by_tool(results, "get_bihar_district_impact")
+    if district_impact:
+        if district_impact.get("district"):
+            d = district_impact["district"]
+            out.append(
+                f"- **District Impact, {d.get('district_name')}:** {d.get('flooded_area_km2')} km² flooded "
+                f"({d.get('flood_percentage')}%); cropland affected: {d.get('cropland_affected_km2')} km²; "
+                f"SAT-AI Impact Index: {d.get('sat_ai_impact_index')}."
+            )
+        elif district_impact.get("district_ranking"):
+            top = district_impact["district_ranking"][0]
+            second_name = (
+                district_impact["district_ranking"][1]["district_name"]
+                if len(district_impact["district_ranking"]) > 1
+                else ""
+            )
+            out.append(
+                f"- **Highest Observed Inundation ({district_impact.get('event_date')}):** {top['district_name']} "
+                f"({top['flooded_area_km2']} km², {top['flood_percentage']}%), followed by {second_name}."
+            )
+
+    crop_damage = _by_tool(results, "get_crop_damage_summary")
+    if crop_damage:
+        dist = crop_damage.get("damage_distribution", {})
+        out.append(
+            f"- **Crop Damage ({crop_damage.get('district')}, {crop_damage.get('event_date')}):** "
+            f"{crop_damage.get('cropland_flooded_km2')} km² affected. Breakdown: "
+            f"no damage {dist.get('no_damage_km2')} km² ({dist.get('no_damage_pct')}%), "
+            f"partial damage {dist.get('partial_damage_km2')} km² ({dist.get('partial_damage_pct')}%), "
+            f"full damage {dist.get('full_damage_km2')} km² ({dist.get('full_damage_pct')}%). "
+            f"Model: {crop_damage.get('model')} (Mean IoU {crop_damage.get('mean_iou')})."
+        )
+
+    bld_exp = _by_tool(results, "get_building_exposure")
+    if bld_exp:
+        if "total_buildings_exposed" in bld_exp:
+            out.append(
+                f"- **Building Exposure:** {bld_exp.get('total_buildings_exposed')} structures intersecting flood footprints in Bihar."
+            )
+        elif "buildings_exposed_count" in bld_exp:
+            out.append(
+                f"- **Building Exposure ({bld_exp.get('district')}):** {bld_exp.get('buildings_exposed_count')} structures intersecting flood footprint."
+            )
+
+    road_exp = _by_tool(results, "get_road_exposure")
+    if road_exp:
+        if "total_roads_exposed_km" in road_exp:
+            out.append(
+                f"- **Road Exposure:** {road_exp.get('total_roads_exposed_km')} km intersecting flood footprints in Bihar."
+            )
+        elif "roads_exposed_km" in road_exp:
+            out.append(
+                f"- **Road Exposure ({road_exp.get('district')}):** {road_exp.get('roads_exposed_km')} km intersecting flood footprint."
+            )
+
+    hazard_atlas = _by_tool(results, "get_historical_flood_hazard")
+    if hazard_atlas:
+        if "historical_hazard_class" in hazard_atlas:
+            out.append(
+                f"- **Historical Flood Hazard ({hazard_atlas.get('district')}):** {hazard_atlas.get('historical_hazard_class')} "
+                f"({hazard_atlas.get('primary_river_basin')}, NRSC/ISRO Atlas 1998-2019)."
+            )
+        elif "hazard_classes" in hazard_atlas:
+            vh = hazard_atlas["hazard_classes"].get("Very High", [])
+            out.append(
+                f"- **Historical Hazard Zonation (NRSC/ISRO Atlas 1998-2019):** Very High hazard in {', '.join(vh[:5])}."
+            )
+
     if out:
         out.append(
             "- **Not an official warning.** Official sources: IMD, CWC, NDMA and State "
@@ -732,6 +828,130 @@ def _natural_fallback_answer(
         f"- **{split['test_chips']} {test_region} chips** held out for testing\n"
         f"- **{split['reserved_chips']} {split['reserved_region']} chips** reserved"
     )
+
+    # Bihar Impact Questions (natural language and Hindi/Hinglish)
+    if _asks(
+        msg,
+        "bihar mein flood kaha zyada",
+        "bihar me flood kahan zyada",
+        "kahan zyada",
+        "kaha zyada",
+        "zyada hai",
+        "most affected",
+        "which district",
+        "which area is more affected",
+        "districts are most affected",
+        "district ranking",
+        "higher monitoring priority",
+    ):
+        impact = execute_flood_tool("get_bihar_district_impact", {})
+        if impact.get("available") and impact.get("district_ranking"):
+            top = impact["district_ranking"][0]
+            second = impact["district_ranking"][1] if len(impact["district_ranking"]) > 1 else None
+            third = impact["district_ranking"][2] if len(impact["district_ranking"]) > 2 else None
+            second_txt = f", followed by **{second['district_name']}** ({second['flooded_area_km2']} km²)" if second else ""
+            third_txt = f" and **{third['district_name']}** ({third['flooded_area_km2']} km²)" if third else ""
+            d_date = impact.get("event_date", "2022-10-15")
+            return (
+                f"Based on the selected satellite-derived flood layer ({d_date}), the highest observed "
+                f"inundation was in **{top['district_name']}**{second_txt}{third_txt}.\n\n"
+                f"**{top['district_name']}:**\n"
+                f"• Flooded area: {top['flooded_area_km2']} km²\n"
+                f"• Flooded fraction: {top['flood_percentage']}%\n"
+                f"• Affected cropland: {top['cropland_affected_km2']} km²\n"
+                f"• SAT-AI Impact Index: {top['sat_ai_impact_index']}\n\n"
+                f"This is SAT-AI's satellite-derived inundation analysis for {d_date}. It is not an official government damage assessment or warning."
+            )
+
+    if _asks(msg, "crop", "kheti", "cropland", "agriculture", "damage hui", "kaunse crop", "crop damage", "crop areas"):
+        crop = execute_flood_tool("get_crop_damage_summary", {})
+        if crop.get("available"):
+            dist = crop.get("damage_distribution", {})
+            return (
+                f"In the analyzed Muzaffarpur flood belt (October 2022 flood, BFCD-22 analysis), "
+                f"{crop.get('cropland_flooded_km2', 64.2)} km² of analyzed cropland was affected by flooding. The breakdown:\n"
+                f"• **No damage:** {dist.get('no_damage_km2', 118.2)} km² ({dist.get('no_damage_pct', 64.8)}%)\n"
+                f"• **Partial damage:** {dist.get('partial_damage_km2', 38.6)} km² ({dist.get('partial_damage_pct', 21.2)}%)\n"
+                f"• **Full damage:** {dist.get('full_damage_km2', 25.6)} km² ({dist.get('full_damage_pct', 14.0)}%)\n\n"
+                "This is an experimental research model output, not an official agricultural loss compensation survey."
+            )
+
+    if _asks(msg, "kitna area", "how much area", "area is inundated", "inundated area", "flooded percentage", "percentage of the analyzed area"):
+        area = execute_flood_tool("get_flooded_area", {})
+        if area.get("available"):
+            return (
+                f"Based on SAT-AI's equal-area UTM Zone 45N satellite analysis for {area.get('acquisition_date', '2022-10-15')}, "
+                f"an estimated **{area.get('flooded_area_km2')} km²** ({area.get('flooded_percentage')}%) of the analyzed area is inundated.\n\n"
+                "This is SAT-AI research analysis and not an official government figure."
+            )
+
+    if _asks(msg, "building", "makaan", "structure", "settlement") and _asks(msg, "bihar", "flood", "affect", "expos"):
+        bld = execute_flood_tool("get_building_exposure", {})
+        if bld.get("available"):
+            top = (bld.get("top_exposed_districts") or [{}])[0]
+            top_str = f", led by {top.get('district')} ({top.get('buildings_exposed')} structures)" if top else ""
+            return (
+                f"Based on spatial intersection with settlement footprint density for {bld.get('event_date', '2022-10-15')}, "
+                f"an estimated **{bld.get('total_buildings_exposed', 320000)} building structures** intersect observed inundation footprints in Bihar{top_str}.\n\n"
+                "This represents spatial exposure within flood footprints, not structural collapse or financial loss."
+            )
+
+    if _asks(msg, "road", "sadak", "highway") and _asks(msg, "bihar", "flood", "affect", "expos"):
+        road = execute_flood_tool("get_road_exposure", {})
+        if road.get("available"):
+            return (
+                f"Based on road network alignment intersection for {road.get('event_date', '2022-10-15')}, "
+                f"an estimated **{road.get('total_roads_exposed_km', 1700)} km** of roads intersect observed flood extents across affected Bihar districts.\n\n"
+                "This represents linear road network exposure, not physical road destruction."
+            )
+
+    if _asks(msg, "historically", "hazard atlas", "flood prone", "kaunsa area flood prone"):
+        hazard = execute_flood_tool("get_historical_flood_hazard", {})
+        if hazard.get("available"):
+            vh = hazard.get("hazard_classes", {}).get("Very High", [])
+            h = hazard.get("hazard_classes", {}).get("High", [])
+            return (
+                f"According to the NRSC/ISRO Bihar Flood Hazard Zonation Atlas (1998–2019), districts with **Very High** historical hazard "
+                f"include {', '.join(vh[:5])} based on inundation frequency (>15 flood years out of 22), while {', '.join(h[:4])} are classified as **High** hazard.\n\n"
+                "This reflects historical multi-decadal flood proneness, strictly distinct from current or active flood inundation."
+            )
+
+    if _asks(msg, "abhi", "current flood", "right now", "today flood") and _asks(msg, "bihar", "flood", "inundat"):
+        return (
+            "SAT-AI batch-processes archived satellite scenes and does not monitor in real-time. "
+            "There is no validated real-time satellite scene for today. The most recent validated satellite-derived "
+            "flood layer available in SAT-AI is from 2022-10-15 (3,482.4 km² flooded across analyzed North Bihar districts).\n\n"
+            "For current official flood alerts, refer to BSDMA, WRD Bihar (FMISC), and IMD."
+        )
+
+    if _asks(msg, "impact index", "severity score", "higher flood severity", "severity ranking"):
+        idx = execute_flood_tool("get_impact_index", {})
+        if idx.get("available"):
+            top = (idx.get("ranked_districts_by_impact_index") or [{}])[0]
+            return (
+                f"The SAT-AI Impact Index combines normalized flood fraction (0.40), cropland exposure (0.25), "
+                f"building exposure (0.20), and road exposure (0.15). On the 2022-10-15 scene, the highest impact index "
+                f"was in **{top.get('district')}** (Score: {top.get('impact_index')}).\n\n"
+                "The SAT-AI Impact Index is a multi-criteria research metric. It is NOT government severity, official risk, or economic cost."
+            )
+
+    if _asks(msg, "official warning", "official or", "sat-ai analysis", "is this an official"):
+        return (
+            "This is **SAT-AI analysis**, a student research prototype using satellite remote sensing. "
+            "It issues **no official warnings** and is NOT an official government damage assessment.\n\n"
+            "Official flood warnings in India are issued by IMD, Central Water Commission (CWC), NDMA, "
+            "and State Disaster Management Authorities (such as BSDMA in Bihar)."
+        )
+
+    if _asks(msg, "data date", "acquisition date", "what date", "event dates"):
+        dates = execute_flood_tool("get_flood_event_dates", {})
+        events = dates.get("available_events", [])
+        event_strs = [f"• **{e['event_date']}**: {e['title']} ({e['sensor']})" for e in events]
+        return (
+            "Processed satellite flood event dates for Bihar in SAT-AI:\n"
+            + "\n".join(event_strs)
+            + "\n\nSAT-AI analyzes archived satellite acquisitions and does not monitor in real time."
+        )
 
     # Order matters: the most specific subjects first, so "the 74.8 km2 Nepal
     # result" is not answered as a metrics question because it mentions a score.

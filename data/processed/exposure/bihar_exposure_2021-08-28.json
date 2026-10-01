@@ -1,0 +1,18 @@
+{
+  "event_date": "2021-08-28",
+  "title": "August 2021 Monsoon Flood Peak",
+  "sensor": "Sentinel-1 C-SAR IW GRD",
+  "flooded_area_km2": 4812.0,
+  "affected_cropland_km2": 2323.1,
+  "affected_building_count": 324500,
+  "affected_road_km": 1501.5,
+  "hazard_overlap_percent": 67.58,
+  "high_hazard_inundation_km2": 3251.9,
+  "number_of_affected_districts": 8,
+  "calculation_method": "geodesic_projected_utm_zone_45n",
+  "uncertainty_and_limitations": [
+    "Building counts are settlement density proxies derived from Census and WorldPop grids.",
+    "Road network exposure represents national and state highway alignments intersecting 10m flood footprints.",
+    "Historical hazard overlap reflects 1998-2019 NRSC atlas zonation, not post-2019 flood defense works."
+  ]
+}

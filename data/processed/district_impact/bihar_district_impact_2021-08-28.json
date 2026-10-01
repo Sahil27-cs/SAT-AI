@@ -1,0 +1,165 @@
+{
+  "available": true,
+  "event_date": "2021-08-28",
+  "event_title": "August 2021 Monsoon Flood Peak",
+  "sensor": "Sentinel-1 C-SAR IW GRD",
+  "total_flooded_area_km2": 4812.0,
+  "total_observed_area_km2": 94163.0,
+  "flooded_percentage_state": 5.11,
+  "sorted_by": "flooded_area_km2",
+  "district_ranking": [
+    {
+      "district_name": "Darbhanga",
+      "flooded_area_km2": 512.4,
+      "district_area_km2": 2279.0,
+      "flood_percentage": 22.48,
+      "cropland_affected_km2": 368.0,
+      "building_exposure": 54200,
+      "road_exposure_km": 242.0,
+      "blocks_affected": [
+        "Kusheshwar Asthan",
+        "Biraul",
+        "Ghanshyampur",
+        "Kiratpur",
+        "Hanumannagar"
+      ],
+      "historical_hazard_class": "Very High",
+      "primary_river_basin": "Kamla / Bagmati",
+      "sat_ai_impact_index": 0.96
+    },
+    {
+      "district_name": "Muzaffarpur",
+      "flooded_area_km2": 498.2,
+      "district_area_km2": 3172.0,
+      "flood_percentage": 15.71,
+      "cropland_affected_km2": 352.4,
+      "building_exposure": 51800,
+      "road_exposure_km": 236.5,
+      "blocks_affected": [
+        "Aurai",
+        "Katra",
+        "Gaighat",
+        "Bochahan",
+        "Sahebganj"
+      ],
+      "historical_hazard_class": "Very High",
+      "primary_river_basin": "Burhi Gandak / Bagmati",
+      "sat_ai_impact_index": 0.828
+    },
+    {
+      "district_name": "Supaul",
+      "flooded_area_km2": 445.0,
+      "district_area_km2": 2425.0,
+      "flood_percentage": 18.35,
+      "cropland_affected_km2": 310.2,
+      "building_exposure": 43500,
+      "road_exposure_km": 204.0,
+      "blocks_affected": [
+        "Nirmali",
+        "Kishanpur",
+        "Saraigarh",
+        "Pipra"
+      ],
+      "historical_hazard_class": "Very High",
+      "primary_river_basin": "Kosi",
+      "sat_ai_impact_index": 0.791
+    },
+    {
+      "district_name": "Samastipur",
+      "flooded_area_km2": 420.5,
+      "district_area_km2": 2904.0,
+      "flood_percentage": 14.48,
+      "cropland_affected_km2": 304.0,
+      "building_exposure": 41200,
+      "road_exposure_km": 192.0,
+      "blocks_affected": [
+        "Rosera",
+        "Hasanpur",
+        "Singhia"
+      ],
+      "historical_hazard_class": "Very High",
+      "primary_river_basin": "Burhi Gandak / Ganga",
+      "sat_ai_impact_index": 0.709
+    },
+    {
+      "district_name": "Khagaria",
+      "flooded_area_km2": 382.0,
+      "district_area_km2": 1486.0,
+      "flood_percentage": 25.71,
+      "cropland_affected_km2": 282.5,
+      "building_exposure": 37100,
+      "road_exposure_km": 174.0,
+      "blocks_affected": [
+        "Beldaur",
+        "Alauli",
+        "Gogri"
+      ],
+      "historical_hazard_class": "Very High",
+      "primary_river_basin": "Kosi / Bagmati / Ganga",
+      "sat_ai_impact_index": 0.837
+    },
+    {
+      "district_name": "Katihar",
+      "flooded_area_km2": 350.2,
+      "district_area_km2": 3057.0,
+      "flood_percentage": 11.46,
+      "cropland_affected_km2": 246.0,
+      "building_exposure": 33200,
+      "road_exposure_km": 158.0,
+      "blocks_affected": [
+        "Amdabad",
+        "Barari",
+        "Kursela"
+      ],
+      "historical_hazard_class": "Very High",
+      "primary_river_basin": "Mahananda / Ganga / Kosi",
+      "sat_ai_impact_index": 0.571
+    },
+    {
+      "district_name": "Saharsa",
+      "flooded_area_km2": 328.0,
+      "district_area_km2": 1687.0,
+      "flood_percentage": 19.44,
+      "cropland_affected_km2": 234.0,
+      "building_exposure": 31500,
+      "road_exposure_km": 146.0,
+      "blocks_affected": [
+        "Simri Bakhtiarpur",
+        "Nauhatta",
+        "Mahishi"
+      ],
+      "historical_hazard_class": "Very High",
+      "primary_river_basin": "Kosi",
+      "sat_ai_impact_index": 0.677
+    },
+    {
+      "district_name": "Madhubani",
+      "flooded_area_km2": 315.6,
+      "district_area_km2": 3501.0,
+      "flood_percentage": 9.01,
+      "cropland_affected_km2": 226.0,
+      "building_exposure": 32000,
+      "road_exposure_km": 149.0,
+      "blocks_affected": [
+        "Bisfi",
+        "Benipatti",
+        "Jhanjharpur"
+      ],
+      "historical_hazard_class": "Very High",
+      "primary_river_basin": "Kamla / Balan",
+      "sat_ai_impact_index": 0.508
+    }
+  ],
+  "top_affected_district": "Darbhanga",
+  "severity_weights": {
+    "w1_flood": 0.4,
+    "w2_crop": 0.25,
+    "w3_building": 0.2,
+    "w4_road": 0.15
+  },
+  "caveats": [
+    "Ranking is derived from satellite inundation spread intersecting district boundaries for this acquisition.",
+    "This is SAT-AI research analysis, not an official government ranking or damage survey.",
+    "SAT-AI is a student research prototype. This is NOT an official government damage assessment, emergency warning, or compensation survey. Official warnings in Bihar come from Bihar State Disaster Management Authority (BSDMA), Water Resources Department (WRD Bihar / FMISC), IMD, and CWC."
+  ]
+}

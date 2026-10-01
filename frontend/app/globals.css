@@ -1700,3 +1700,730 @@ a:hover {
     justify-content: center;
   }
 }
+
+/* ==========================================================================
+   BIHAR FLOOD IMPACT ASSESSMENT STYLES
+   ========================================================================== */
+
+.impact-control-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 20px;
+  margin-bottom: 24px;
+}
+
+.event-date-selector {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.control-label {
+  font-size: 13px;
+  color: var(--fg-dim);
+  font-weight: 500;
+}
+
+.event-date-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.event-date-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--accent);
+}
+
+.event-date-btn.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
+}
+
+.research-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #fbbf24;
+}
+
+.dot-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
+}
+
+/* Impact Summary Cards */
+.impact-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.impact-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.impact-card:hover {
+  transform: translateY(-2px);
+}
+
+.impact-card.highlight-cyan {
+  border-top: 3px solid #38bdf8;
+}
+
+.impact-card.highlight-emerald {
+  border-top: 3px solid #10b981;
+}
+
+.impact-card.highlight-amber {
+  border-top: 3px solid #f59e0b;
+}
+
+.impact-card.highlight-purple {
+  border-top: 3px solid #a855f7;
+}
+
+.impact-card-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.impact-card-value {
+  font-size: 26px;
+  font-weight: 750;
+  color: #fff;
+  font-family: var(--mono);
+  margin-bottom: 6px;
+}
+
+.impact-card-value .unit {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--fg-dim);
+}
+
+.impact-card-sub {
+  font-size: 12px;
+  color: var(--fg-dim);
+  line-height: 1.4;
+}
+
+/* Interactive Map & District Detail Layout */
+.impact-interactive-container {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.map-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.map-panel-header {
+  margin-bottom: 16px;
+}
+
+.map-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.map-panel-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.map-controls-row {
+  margin-bottom: 10px;
+}
+
+.map-layer-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.layer-chip-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.layer-chip-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.layer-chip-btn.active {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.map-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.map-canvas-wrapper {
+  background: #040711;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.bihar-svg-map {
+  width: 100%;
+  height: auto;
+  max-height: 480px;
+  display: block;
+}
+
+.district-polygon {
+  cursor: pointer;
+  transition: fill 0.2s ease, stroke 0.2s ease;
+}
+
+.district-polygon:hover {
+  filter: brightness(1.25);
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.district-polygon.selected {
+  stroke: #38bdf8;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.5));
+}
+
+.district-center-marker {
+  pointer-events: none;
+}
+
+.district-label {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  fill: #cbd5e1;
+  text-anchor: middle;
+  pointer-events: none;
+  user-select: none;
+}
+
+.map-footnote {
+  font-size: 11px;
+  color: var(--fg-dim);
+  margin-top: 10px;
+  text-align: center;
+}
+
+/* District Detail Card (Right Column) */
+.district-detail-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+}
+
+.district-detail-header {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+}
+
+.district-detail-name {
+  font-size: 22px;
+  font-weight: 750;
+  color: #fff;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.district-detail-sub {
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+.hazard-badge-pill {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.hazard-badge-pill.very-high {
+  background: rgba(244, 63, 94, 0.15);
+  color: #fda4af;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
+.hazard-badge-pill.high {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.hazard-badge-pill.medium {
+  background: rgba(56, 189, 248, 0.15);
+  color: #bae6fd;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.hazard-badge-pill.low {
+  background: rgba(16, 185, 129, 0.15);
+  color: #a7f3d0;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.district-metrics-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.metric-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metric-row-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.metric-row-label {
+  color: var(--fg-dim);
+}
+
+.metric-row-val {
+  color: #fff;
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
+.bar-container {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.bar-fill.flood {
+  background: #38bdf8;
+}
+
+.bar-fill.cropland {
+  background: #10b981;
+}
+
+.district-impact-index-box {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.district-impact-index-box .label {
+  font-size: 12.5px;
+  color: var(--fg-dim);
+}
+
+.district-impact-index-box .label small {
+  display: block;
+  font-size: 10px;
+  color: var(--fg-muted);
+}
+
+.district-impact-index-box .index-num {
+  font-size: 24px;
+  font-weight: 750;
+  font-family: var(--mono);
+  color: #38bdf8;
+}
+
+/* Crop Damage Detail Section */
+.crop-damage-detail-section {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.crop-damage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.crop-damage-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.crop-classes-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.crop-class-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  text-align: center;
+}
+
+.crop-class-title {
+  font-size: 10.5px;
+  color: var(--fg-dim);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.damage-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.damage-dot.no-damage {
+  background: #10b981;
+}
+
+.damage-dot.partial {
+  background: #f59e0b;
+}
+
+.damage-dot.full {
+  background: #f43f5e;
+}
+
+.crop-class-val {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: #fff;
+}
+
+.model-tag-sub {
+  font-size: 10px;
+  color: var(--fg-muted);
+  margin-top: 8px;
+  text-align: right;
+}
+
+/* District Impact Data Table */
+.district-table-container {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 22px;
+  margin-bottom: 28px;
+}
+
+.district-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.district-table-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.sort-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--fg-dim);
+}
+
+.sort-select {
+  background: #090e1a;
+  border: 1px solid var(--border);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  outline: none;
+  cursor: pointer;
+}
+
+.sort-select:focus {
+  border-color: var(--accent);
+}
+
+.table-scroll-wrapper {
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+}
+
+.bihar-impact-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.bihar-impact-table th {
+  background: rgba(255, 255, 255, 0.03);
+  padding: 12px 14px;
+  font-weight: 600;
+  color: var(--fg-dim);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.bihar-impact-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--fg);
+}
+
+.bihar-impact-table tr.table-row {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.bihar-impact-table tr.table-row:hover {
+  background: rgba(56, 189, 248, 0.05);
+}
+
+.bihar-impact-table tr.table-row.selected {
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.rank-cell {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+
+.district-cell strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.mono-num {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.table-hazard-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 3px;
+}
+
+.table-hazard-tag.very-high {
+  background: rgba(244, 63, 94, 0.15);
+  color: #fda4af;
+}
+
+.table-hazard-tag.high {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fde68a;
+}
+
+.table-hazard-tag.medium {
+  background: rgba(56, 189, 248, 0.15);
+  color: #bae6fd;
+}
+
+.table-hazard-tag.low {
+  background: rgba(16, 185, 129, 0.15);
+  color: #a7f3d0;
+}
+
+.impact-index-pill {
+  font-family: var(--mono);
+  font-weight: 700;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+/* Evidence Accordion */
+.evidence-accordion-wrapper {
+  margin-top: 20px;
+}
+
+.toggle-evidence-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  text-align: left;
+}
+
+.toggle-evidence-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--accent);
+}
+
+.evidence-content-panel {
+  background: rgba(4, 7, 17, 0.8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 20px;
+  margin-top: 8px;
+}
+
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.evidence-box {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+}
+
+.evidence-box-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #38bdf8;
+  margin-bottom: 6px;
+}
+
+.evidence-box p {
+  font-size: 12px;
+  color: var(--fg-dim);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Responsive adjustments for Bihar Impact */
+@media (max-width: 1024px) {
+  .impact-summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .impact-interactive-container {
+    grid-template-columns: 1fr;
+  }
+  .evidence-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .impact-summary-grid {
+    grid-template-columns: 1fr;
+  }
+  .impact-control-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+

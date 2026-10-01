@@ -28,6 +28,7 @@ hiding it would erase a real finding -- as ``raw_extent_km2`` with
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,31 @@ __all__ = [
 ]
 
 _HERE = Path(__file__).resolve().parent
+_ROOT = _HERE.parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+try:
+    from satai.geo.bihar_impact import (
+        BFCD22_MUZAFFARPUR_STATS,
+        BIHAR_DISTRICTS,
+        BIHAR_EVENT_CATALOGUE,
+        NOT_OFFICIAL_DISCLAIMER,
+        compute_sat_ai_impact_index,
+        get_available_event_dates,
+        get_district_impact_stats,
+    )
+except Exception:
+    BFCD22_MUZAFFARPUR_STATS = {}
+    BIHAR_DISTRICTS = {}
+    BIHAR_EVENT_CATALOGUE = {}
+    NOT_OFFICIAL_DISCLAIMER = (
+        "SAT-AI prototype research output. This is NOT an official warning or damage assessment."
+    )
+    compute_sat_ai_impact_index = lambda f, c, b, r, **kw: 0.0  # type: ignore
+    get_available_event_dates = lambda: []  # type: ignore
+    get_district_impact_stats = lambda **kw: {"available": False}  # type: ignore
+
 _FACTS_PATH = _HERE / "flood_facts.generated.json"
 _ANALYSES_PATH = _HERE / "analyses.generated.json"
 _FACTS_CACHE: dict[str, Any] | None = None
@@ -259,6 +285,175 @@ FLOOD_TOOL_DECLARATIONS: list[dict[str, Any]] = [
             "whether to rely on SAT-AI."
         ),
         "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_bihar_flood_status",
+        "description": (
+            "Overall flood inundation status for Bihar for a validated satellite acquisition "
+            "date: total flooded area (km2), observed area (km2), flooded percentage, and sensor. "
+            "Use for 'how much is Bihar flooded', 'current flood status in Bihar', 'is Bihar flooded'. "
+            "Returns data unavailable for dates without a validated satellite scene; never fabricates values."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "event_date": {
+                    "type": "string",
+                    "description": "Acquisition date YYYY-MM-DD (e.g. 2022-10-15 or 2021-08-28). Omit for latest processed scene.",
+                }
+            },
+        },
+    },
+    {
+        "name": "get_bihar_district_impact",
+        "description": (
+            "District-level flood impact aggregation for Bihar: ranks districts by inundated area (km2), "
+            "flood percentage, or SAT-AI Impact Index, or returns detailed impact for a specific district "
+            "(cropland affected, exposed buildings, roads, affected blocks). Use for 'which district is most affected', "
+            "'bihar mein flood kaha zyada hai', 'district ranking'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "district": {
+                    "type": "string",
+                    "description": "District name (e.g. Muzaffarpur, Darbhanga, Supaul, Patna). Omit to rank all districts.",
+                },
+                "event_date": {
+                    "type": "string",
+                    "description": "Acquisition date YYYY-MM-DD. Omit for latest processed scene.",
+                },
+                "sort_by": {
+                    "type": "string",
+                    "enum": ["flooded_area_km2", "flood_percentage", "impact_index"],
+                    "description": "Metric to rank districts by. Default is flooded_area_km2.",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_flooded_area",
+        "description": (
+            "Geodesic/projected area calculation for observed flood inundation (km2, observed area, percentage) "
+            "using equal-area UTM Zone 45N projection. Use for 'how much area is inundated', 'flooded area in km2', "
+            "'what percentage is flooded'. Never uses naive pixel counting in degrees."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "region": {"type": "string", "description": "Region or state name, default is Bihar."},
+                "district": {"type": "string", "description": "Specific district name if filtering by district."},
+                "event_date": {"type": "string", "description": "Acquisition date YYYY-MM-DD."},
+            },
+        },
+    },
+    {
+        "name": "get_crop_damage_summary",
+        "description": (
+            "Crop damage assessment from pre- and post-flood optical Sentinel-2 imagery (B4, B8, NDVI, Delta-NDVI): "
+            "breakdown of cropland into no damage (class 0), partial damage (class 1), and full damage (class 2) "
+            "in km2 and percentage. Associated with BFCD-22 Muzaffarpur flood analysis. Use for 'crop damage', "
+            "'affected agricultural land', 'kitni kheti damage hui'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "district": {"type": "string", "description": "District name (default is Muzaffarpur)."},
+                "event_date": {"type": "string", "description": "Acquisition date YYYY-MM-DD."},
+            },
+        },
+    },
+    {
+        "name": "get_building_exposure",
+        "description": (
+            "Building and settlement exposure intersecting observed flood inundation footprints in Bihar: "
+            "number of exposed structures and settlement centroids. Use for 'how many buildings are affected', "
+            "'settlement exposure', 'kitne buildings affected hain'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "district": {"type": "string", "description": "District name. Omit for state-level totals."},
+                "event_date": {"type": "string", "description": "Acquisition date YYYY-MM-DD."},
+            },
+        },
+    },
+    {
+        "name": "get_road_exposure",
+        "description": (
+            "Road network exposure intersecting observed flood footprints in Bihar: kilometres of affected roads "
+            "(highways and major transport corridors). Use for 'how much road is flooded', 'road network exposure', "
+            "'affected roads'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "district": {"type": "string", "description": "District name. Omit for state-level totals."},
+                "event_date": {"type": "string", "description": "Acquisition date YYYY-MM-DD."},
+            },
+        },
+    },
+    {
+        "name": "get_historical_flood_hazard",
+        "description": (
+            "Historical flood hazard zonation from the NRSC/ISRO Bihar Flood Hazard Atlas (1998-2019): "
+            "classifies districts into Very High, High, Moderate, Low, Very Low flood proneness based on 22 years of "
+            "satellite observations. Use for 'historically flood-prone areas', 'flood hazard atlas', 'which areas are prone to flooding'. "
+            "Strictly historical, NOT current inundation."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "district": {
+                    "type": "string",
+                    "description": "District name (e.g. Supaul, Darbhanga, Patna). Omit to list hazard classes across districts.",
+                }
+            },
+        },
+    },
+    {
+        "name": "get_flood_event_dates",
+        "description": (
+            "List of available processed satellite flood event dates for Bihar in SAT-AI: returns dates, sensors, status, "
+            "and notes that SAT-AI does not monitor in real time. Use for 'what dates are available', 'when was the data acquired', "
+            "'is there data for today'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "region": {"type": "string", "description": "Region or state name, default is Bihar."}
+            },
+        },
+    },
+    {
+        "name": "get_impact_index",
+        "description": (
+            "Transparent SAT-AI Impact Index combining normalized flood fraction (0.40), cropland exposure (0.25), "
+            "building exposure (0.20), and road exposure (0.15). Multi-criteria research index, NOT an official government "
+            "severity score or financial damage estimate. Use for 'impact index', 'flood severity ranking', 'which area has higher severity'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "district": {"type": "string", "description": "District name. Omit for district comparison."},
+                "event_date": {"type": "string", "description": "Acquisition date YYYY-MM-DD."},
+            },
+        },
+    },
+    {
+        "name": "get_impact_provenance",
+        "description": (
+            "Complete provenance chain for flood impact figures: sensor, acquisition date, processing date, model versions, "
+            "spatial resolution, administrative boundaries, projection method, and limitations. Use for 'what evidence supports this', "
+            "'what data source was used', 'provenance'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "event_date": {"type": "string", "description": "Acquisition date YYYY-MM-DD."},
+                "analysis_id": {"type": "string", "description": "Analysis or event identifier."},
+            },
+        },
     },
 ]
 
@@ -745,10 +940,368 @@ def _provenance(region: str | None, hazard: str = "flood") -> dict[str, Any]:
     }
 
 
+def _bihar_flood_status(event_date: str | None = None) -> dict[str, Any]:
+    chosen_date = event_date or "2022-10-15"
+    if chosen_date not in BIHAR_EVENT_CATALOGUE:
+        known = sorted(BIHAR_EVENT_CATALOGUE.keys())
+        return _unavailable(
+            f"No validated SAT-AI scene is available for Bihar for that date ({event_date!r}). "
+            f"Available processed event dates: {', '.join(known)}. SAT-AI does not monitor in real-time or fabricate current-day values.",
+            known_dates=known,
+        )
+    event = BIHAR_EVENT_CATALOGUE[chosen_date]
+    return {
+        "available": True,
+        "source_kind": "model",
+        "region": "Bihar",
+        "event_date": chosen_date,
+        "event_title": event["title"],
+        "sensor": event["sensor"],
+        "flooded_area_km2": event["total_flooded_area_km2"],
+        "observed_area_km2": event["total_observed_area_km2"],
+        "flooded_percentage": event["flooded_percentage_state"],
+        "affected_districts_count": len(event["districts"]),
+        "resolution_m": event["resolution_m"],
+        "calculation_method": "geodesic_projected_utm_zone_45n",
+        "status": "RESEARCH INFERENCE",
+        "is_official_warning": False,
+        "caveats": [
+            NOT_OFFICIAL,
+            f"This is SAT-AI's satellite-derived inundation analysis for {chosen_date}. It is not an official government damage assessment or warning.",
+        ],
+    }
+
+
+def _bihar_district_impact(
+    district: str | None = None,
+    event_date: str | None = None,
+    sort_by: str = "flooded_area_km2",
+) -> dict[str, Any]:
+    stats = get_district_impact_stats(district_name=district, event_date=event_date, sort_by=sort_by)
+    if not stats.get("available"):
+        return stats
+    return {
+        "source_kind": "derived",
+        **stats,
+    }
+
+
+def _flooded_area(
+    region: str | None = None,
+    district: str | None = None,
+    event_date: str | None = None,
+) -> dict[str, Any]:
+    if district:
+        stats = get_district_impact_stats(district_name=district, event_date=event_date)
+        if not stats.get("available"):
+            return stats
+        d = stats.get("district", stats)
+        return {
+            "available": True,
+            "source_kind": "derived",
+            "region": "Bihar",
+            "district": d.get("district_name", district),
+            "flooded_area_km2": d.get("flooded_area_km2", 0.0),
+            "observed_area_km2": d.get("district_area_km2", 0.0),
+            "flooded_percentage": d.get("flood_percentage", 0.0),
+            "source": "Sentinel-1 C-SAR IW GRD",
+            "acquisition_date": stats.get("event_date", event_date or "2022-10-15"),
+            "resolution_m": 10.0,
+            "method": "geodesic_projected_utm_zone_45n",
+            "caveats": [
+                NOT_OFFICIAL,
+                "Areas calculated using metric equal-area UTM Zone 45N projection (EPSG:32645).",
+            ],
+        }
+    status = _bihar_flood_status(event_date)
+    if not status.get("available"):
+        return status
+    return {
+        "available": True,
+        "source_kind": "derived",
+        "region": "Bihar",
+        "flooded_area_km2": status["flooded_area_km2"],
+        "observed_area_km2": status["observed_area_km2"],
+        "flooded_percentage": status["flooded_percentage"],
+        "source": status["sensor"],
+        "acquisition_date": status["event_date"],
+        "resolution_m": status["resolution_m"],
+        "method": status["calculation_method"],
+        "caveats": [
+            NOT_OFFICIAL,
+            "Areas calculated using metric equal-area UTM Zone 45N projection (EPSG:32645).",
+        ],
+    }
+
+
+def _crop_damage_summary(
+    district: str | None = None,
+    event_date: str | None = None,
+) -> dict[str, Any]:
+    chosen_dist = (district or "Muzaffarpur").strip().title()
+    if chosen_dist != "Muzaffarpur":
+        return {
+            "available": False,
+            "status": "DATA UNAVAILABLE",
+            "reason": (
+                f"SAT-AI crop damage ground truth (BFCD-22) is localized specifically to the Muzaffarpur flood belt "
+                f"(October 2022 flood event). SAT-AI does not have a validated crop damage ground truth dataset for {district!r}."
+            ),
+            "covered_study_area": "Muzaffarpur",
+            "reference_dataset": "BFCD-22",
+            "caveats": [NOT_OFFICIAL],
+        }
+    return {
+        "available": True,
+        "source_kind": "model",
+        "region": "Bihar",
+        "district": "Muzaffarpur",
+        **BFCD22_MUZAFFARPUR_STATS,
+        "caveats": [
+            NOT_OFFICIAL,
+            "Crop damage segmentation is an experimental research model output, not an official government damage assessment or compensation survey.",
+        ],
+    }
+
+
+def _building_exposure(
+    district: str | None = None,
+    event_date: str | None = None,
+) -> dict[str, Any]:
+    stats = get_district_impact_stats(district_name=district, event_date=event_date)
+    if not stats.get("available"):
+        return stats
+    if district:
+        d = stats.get("district", stats)
+        return {
+            "available": True,
+            "source_kind": "derived",
+            "region": "Bihar",
+            "district": d.get("district_name", district),
+            "event_date": stats.get("event_date", "2022-10-15"),
+            "buildings_exposed_count": d.get("building_exposure", 0),
+            "flooded_area_km2": d.get("flooded_area_km2", 0.0),
+            "exposure_method": "Spatial intersection of 10m flood mask with Census settlement footprint density",
+            "caveats": [
+                NOT_OFFICIAL,
+                "Building exposure represents structural footprint counts within inundated zones, not structural collapse or monetary loss.",
+            ],
+        }
+    ranking = stats.get("district_ranking", [])
+    total_buildings = sum(d.get("building_exposure", 0) for d in ranking)
+    return {
+        "available": True,
+        "source_kind": "derived",
+        "region": "Bihar",
+        "event_date": stats.get("event_date", "2022-10-15"),
+        "total_buildings_exposed": total_buildings,
+        "top_exposed_districts": [
+            {"district": d["district_name"], "buildings_exposed": d["building_exposure"]}
+            for d in ranking[:5]
+        ],
+        "exposure_method": "Spatial intersection of 10m flood mask with Census settlement footprint density",
+        "caveats": [
+            NOT_OFFICIAL,
+            "Building exposure represents structural footprint counts within inundated zones, not structural collapse or monetary loss.",
+        ],
+    }
+
+
+def _road_exposure(
+    district: str | None = None,
+    event_date: str | None = None,
+) -> dict[str, Any]:
+    stats = get_district_impact_stats(district_name=district, event_date=event_date)
+    if not stats.get("available"):
+        return stats
+    if district:
+        d = stats.get("district", stats)
+        return {
+            "available": True,
+            "source_kind": "derived",
+            "region": "Bihar",
+            "district": d.get("district_name", district),
+            "event_date": stats.get("event_date", "2022-10-15"),
+            "roads_exposed_km": d.get("road_exposure_km", 0.0),
+            "flooded_area_km2": d.get("flooded_area_km2", 0.0),
+            "exposure_method": "Spatial intersection of 10m flood mask with OpenStreetMap / MoRTH road network",
+            "caveats": [
+                NOT_OFFICIAL,
+                "Road exposure represents linear length of highway and arterial network intersecting flood extent.",
+            ],
+        }
+    ranking = stats.get("district_ranking", [])
+    total_roads = round(sum(d.get("road_exposure_km", 0.0) for d in ranking), 2)
+    return {
+        "available": True,
+        "source_kind": "derived",
+        "region": "Bihar",
+        "event_date": stats.get("event_date", "2022-10-15"),
+        "total_roads_exposed_km": total_roads,
+        "top_exposed_districts": [
+            {"district": d["district_name"], "roads_exposed_km": d["road_exposure_km"]}
+            for d in ranking[:5]
+        ],
+        "exposure_method": "Spatial intersection of 10m flood mask with OpenStreetMap / MoRTH road network",
+        "caveats": [
+            NOT_OFFICIAL,
+            "Road exposure represents linear length of highway and arterial network intersecting flood extent.",
+        ],
+    }
+
+
+def _historical_flood_hazard(district: str | None = None) -> dict[str, Any]:
+    if district:
+        matched = next(
+            (p for name, p in BIHAR_DISTRICTS.items() if name.lower() == district.strip().lower()),
+            None,
+        )
+        if matched is None:
+            return _unavailable(f"{district!r} is not a recognized Bihar district.", known_districts=sorted(BIHAR_DISTRICTS.keys()))
+        return {
+            "available": True,
+            "source_kind": "catalogue",
+            "region": "Bihar",
+            "district": district.strip().title(),
+            "historical_hazard_class": matched["historical_hazard"],
+            "primary_river_basin": matched["primary_river_basin"],
+            "data_source": "NRSC/ISRO Bihar Flood Hazard Zonation Atlas (1998-2019)",
+            "observation_period": "1998 to 2019 (22 flood years)",
+            "classification_definitions": {
+                "Very High": "Inundated >15 times in 22 years",
+                "High": "Inundated 11-15 times in 22 years",
+                "Moderate": "Inundated 6-10 times in 22 years",
+                "Low": "Inundated 3-5 times in 22 years",
+                "Very Low": "Inundated 1-2 times in 22 years",
+            },
+            "caveats": [
+                "Represents HISTORICAL frequency of inundation over 1998-2019, strictly distinct from current or active flood inundation.",
+                NOT_OFFICIAL,
+            ],
+        }
+    by_class: dict[str, list[str]] = {"Very High": [], "High": [], "Moderate": [], "Low": []}
+    for name, p in BIHAR_DISTRICTS.items():
+        hazard = p["historical_hazard"]
+        if hazard in by_class:
+            by_class[hazard].append(name)
+    return {
+        "available": True,
+        "source_kind": "catalogue",
+        "region": "Bihar",
+        "data_source": "NRSC/ISRO Bihar Flood Hazard Zonation Atlas (1998-2019)",
+        "hazard_classes": {k: sorted(v) for k, v in by_class.items()},
+        "total_districts": len(BIHAR_DISTRICTS),
+        "caveats": [
+            "Represents HISTORICAL frequency of inundation over 1998-2019, strictly distinct from current or active flood inundation.",
+            NOT_OFFICIAL,
+        ],
+    }
+
+
+def _flood_event_dates(region: str | None = None) -> dict[str, Any]:
+    events = get_available_event_dates()
+    return {
+        "available": True,
+        "source_kind": "catalogue",
+        "region": region or "Bihar",
+        "available_events": events,
+        "note": (
+            "SAT-AI batch-processes archived satellite acquisitions and does NOT monitor in real time. "
+            "Dates shown correspond to validated satellite scenes available in this deployment."
+        ),
+        "caveats": [NOT_OFFICIAL],
+    }
+
+
+def _impact_index(district: str | None = None, event_date: str | None = None) -> dict[str, Any]:
+    stats = get_district_impact_stats(district_name=district, event_date=event_date, sort_by="impact_index")
+    if not stats.get("available"):
+        return stats
+    formula = "SAT-AI Impact Index = w1*F + w2*C + w3*B + w4*R"
+    weights = {"w1_flood_fraction": 0.40, "w2_cropland_exposure": 0.25, "w3_building_exposure": 0.20, "w4_road_exposure": 0.15}
+    if district:
+        d = stats.get("district", stats)
+        return {
+            "available": True,
+            "source_kind": "derived",
+            "region": "Bihar",
+            "district": d.get("district_name", district),
+            "event_date": stats.get("event_date", "2022-10-15"),
+            "sat_ai_impact_index": d.get("sat_ai_impact_index", 0.0),
+            "formula": formula,
+            "weights": weights,
+            "components": {
+                "flooded_fraction": round(d.get("flood_percentage", 0.0) / 100.0, 4),
+                "cropland_affected_km2": d.get("cropland_affected_km2", 0.0),
+                "building_exposure": d.get("building_exposure", 0),
+                "road_exposure_km": d.get("road_exposure_km", 0.0),
+            },
+            "caveats": [
+                "SAT-AI Impact Index is a transparent multi-criteria research metric. It is NOT a government severity score, official risk rating, or economic damage cost.",
+                NOT_OFFICIAL,
+            ],
+        }
+    ranking = stats.get("district_ranking", [])
+    return {
+        "available": True,
+        "source_kind": "derived",
+        "region": "Bihar",
+        "event_date": stats.get("event_date", "2022-10-15"),
+        "formula": formula,
+        "weights": weights,
+        "ranked_districts_by_impact_index": [
+            {
+                "district": d["district_name"],
+                "impact_index": d["sat_ai_impact_index"],
+                "flooded_area_km2": d["flooded_area_km2"],
+                "cropland_affected_km2": d["cropland_affected_km2"],
+            }
+            for d in ranking[:10]
+        ],
+        "caveats": [
+            "SAT-AI Impact Index is a transparent multi-criteria research metric. It is NOT a government severity score, official risk rating, or economic damage cost.",
+            NOT_OFFICIAL,
+        ],
+    }
+
+
+def _impact_provenance(event_date: str | None = None, analysis_id: str | None = None) -> dict[str, Any]:
+    chosen_date = event_date or "2022-10-15"
+    return {
+        "available": True,
+        "source_kind": "catalogue",
+        "source_type": "satellite_inference",
+        "source": "Sentinel-1 C-SAR IW GRD",
+        "acquisition_date": chosen_date,
+        "processing_date": "2026-10-01",
+        "models": [
+            "SAT-AI Flood U-Net v1.0.0 (trained on Sen1Floods11 v1.1 HandLabeled, 7.76M params)",
+            "SAT-AI CropDamageUNet v1.0.0 (dual-temporal Sentinel-2 Delta-NDVI, BFCD-22 adapter)",
+            "Deterministic GIS Impact Engine (equal-area UTM Zone 45N projection)",
+        ],
+        "ground_truth_status": (
+            "Sen1Floods11 India held-out test split (flood water); BFCD-22 Muzaffarpur benchmark (crop damage); "
+            "NRSC/ISRO Atlas (historical hazard)."
+        ),
+        "resolution": "10m",
+        "administrative_boundary": "Survey of India / Census of India 2011",
+        "calculation_method": "geodesic_projected_utm_zone_45n (EPSG:32645)",
+        "limitations": [
+            "2D satellite surface detection at overpass time; no depth or hydrodynamic velocity.",
+            "Vegetation canopy attenuation in SAR; cloud dependency in optical Sentinel-2.",
+            "Not an official warning or statutory compensation survey.",
+            NOT_OFFICIAL,
+        ],
+    }
+
+
 def execute_flood_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Run one flood tool. Data absence is a result, never an exception."""
     region = arguments.get("region") or None
     hazard = str(arguments.get("hazard") or "flood")
+    district = arguments.get("district") or None
+    event_date = arguments.get("event_date") or None
+
     if name == "get_flood_model_info":
         return _model_info()
     if name == "get_flood_metrics":
@@ -771,4 +1324,32 @@ def execute_flood_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return _band_guide()
     if name == "get_system_scope":
         return _scope()
+
+    # --- Bihar Flood Impact Tools ---
+    if name == "get_bihar_flood_status":
+        return _bihar_flood_status(event_date)
+    if name == "get_bihar_district_impact":
+        return _bihar_district_impact(
+            district=district,
+            event_date=event_date,
+            sort_by=str(arguments.get("sort_by") or "flooded_area_km2"),
+        )
+    if name == "get_flooded_area":
+        return _flooded_area(region=region, district=district, event_date=event_date)
+    if name == "get_crop_damage_summary":
+        return _crop_damage_summary(district=district, event_date=event_date)
+    if name == "get_building_exposure":
+        return _building_exposure(district=district, event_date=event_date)
+    if name == "get_road_exposure":
+        return _road_exposure(district=district, event_date=event_date)
+    if name == "get_historical_flood_hazard":
+        return _historical_flood_hazard(district=district)
+    if name == "get_flood_event_dates":
+        return _flood_event_dates(region=region)
+    if name == "get_impact_index":
+        return _impact_index(district=district, event_date=event_date)
+    if name == "get_impact_provenance":
+        return _impact_provenance(event_date=event_date, analysis_id=arguments.get("analysis_id"))
+
     return _unavailable(f"{name!r} is not a flood tool.", known=sorted(FLOOD_TOOL_NAMES))
+

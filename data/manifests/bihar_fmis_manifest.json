@@ -1,0 +1,18 @@
+{
+  "dataset_name": "Bihar Flood Management Information System (FMIS) Inundation Layers",
+  "source_url": "https://fmiscwrdbihar.gov.in/fmis/inundation.aspx",
+  "license": "Water Resources Department (WRD), Government of Bihar / FMISC Public Domain Notice (View/Advisory access; raw vector/raster layers distributed via inter-agency GIS protocols)",
+  "download_date": "2026-10-01",
+  "spatial_resolution": "Nominal 30m-50m (derived from NRSC RADARSAT processed 1-bit raster inundation layers)",
+  "temporal_coverage": "Monsoon seasons (operational releases across 1998-2026)",
+  "geographic_coverage": "State of Bihar, India (38 districts; North and South Bihar river basins)",
+  "label_definition": {
+    "0": "Non-inundated land",
+    "1": "Observed flood water spread / inundation extent"
+  },
+  "known_limitations": [
+    "Public web services serve cartographic JPEG rendering sheets rather than direct OGC WFS/GeoTIFF raster download endpoints.",
+    "Raw satellite ingestion requires state agency clearance or georeferencing of bulletin extent layers.",
+    "Represents 2D inundation footprint without water column depth or hydrodynamic velocity."
+  ]
+}
