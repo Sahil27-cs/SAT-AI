@@ -470,3 +470,111 @@ def test_the_accessors_tolerate_a_call_with_no_arguments() -> None:
     part = {"functionCall": {"name": "list_study_areas"}}
     assert gemini.call_name(part) == "list_study_areas"
     assert gemini.call_args(part) == {}
+
+
+# --- what a 429 says about itself ----------------------------------------------
+
+
+def _quota_body(quota_id: str, delay: str) -> dict[str, Any]:
+    return {
+        "error": {
+            "message": "You exceeded your current quota",
+            "details": [
+                {
+                    "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                    "violations": [{"quotaId": quota_id}],
+                },
+                {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": delay},
+            ],
+        }
+    }
+
+
+class _QuotaClient(_Client):
+    """Answers 429 with a chosen body for the first `refusals` calls to `model`."""
+
+    body: ClassVar[dict[str, Any]] = {}
+    refusals: ClassVar[int] = 0
+    target: ClassVar[str] = ""
+
+    async def post(self, url: str, **kwargs: Any) -> _Response:
+        model = url.rsplit("/models/", 1)[1].split(":")[0]
+        _Client.calls.append(model)
+        if model == _QuotaClient.target and _QuotaClient.refusals > 0:
+            _QuotaClient.refusals -= 1
+            return _Response(429, _QuotaClient.body)
+        return _Response(200, {"candidates": [{"content": {"parts": [{"text": "answered"}]}}]})
+
+
+def _run_quota(
+    monkeypatch: pytest.MonkeyPatch, body: dict[str, Any], refusals: int
+) -> tuple[dict[str, Any], list[float]]:
+    import asyncio
+
+    waits: list[float] = []
+
+    async def no_wait(seconds: float) -> None:
+        waits.append(seconds)
+
+    _Client.calls = []
+    monkeypatch.setattr(_QuotaClient, "body", body)
+    monkeypatch.setattr(_QuotaClient, "refusals", refusals)
+    monkeypatch.setattr(_QuotaClient, "target", "gemini-custom-flash")
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-custom-flash")
+    monkeypatch.delenv("GEMINI_FALLBACK_MODEL", raising=False)
+    monkeypatch.setattr(gemini.httpx, "AsyncClient", _QuotaClient)
+    monkeypatch.setattr(gemini.asyncio, "sleep", no_wait)
+    _text, _calls, usage = asyncio.run(
+        gemini.call_gemini([{"role": "user", "parts": [{"text": "hi"}]}])
+    )
+    return usage, waits
+
+
+def test_a_daily_quota_goes_straight_to_the_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Retrying a spent daily quota only burns the turn's 60 s."""
+    body = _quota_body("GenerateRequestsPerDayPerProjectPerModel-FreeTier", "40s")
+    usage, waits = _run_quota(monkeypatch, body, refusals=99)
+    assert _Client.calls == ["gemini-custom-flash", gemini.FALLBACK_MODEL]
+    assert waits == []
+    assert usage["fallback_reason"] == "daily quota"
+
+
+def test_a_short_per_minute_wait_is_honoured_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """1.5 s and 3 s of backoff end long before a per-minute window does."""
+    body = _quota_body("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "8s")
+    usage, waits = _run_quota(monkeypatch, body, refusals=1)
+    assert _Client.calls == ["gemini-custom-flash", "gemini-custom-flash"]
+    assert waits == [8.5]
+    assert usage["model"] == "gemini-custom-flash"
+
+
+def test_a_long_per_minute_wait_is_not_honoured(monkeypatch: pytest.MonkeyPatch) -> None:
+    body = _quota_body("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "50s")
+    usage, waits = _run_quota(monkeypatch, body, refusals=99)
+    assert all(w < 50 for w in waits)
+    assert usage["model"] == gemini.FALLBACK_MODEL
+
+
+def test_the_quota_error_says_which_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    body = _quota_body("GenerateRequestsPerDayPerProjectPerModel-FreeTier", "40s")
+    monkeypatch.setenv("GEMINI_FALLBACK_MODEL", "gemini-custom-flash")
+    with pytest.raises(gemini.GeminiError, match="daily quota exhausted"):
+        _run_quota_no_fallback_env(monkeypatch, body)
+
+
+def _run_quota_no_fallback_env(monkeypatch: pytest.MonkeyPatch, body: dict[str, Any]) -> None:
+    import asyncio
+
+    async def no_wait(seconds: float) -> None:
+        return None
+
+    _Client.calls = []
+    monkeypatch.setattr(_QuotaClient, "body", body)
+    monkeypatch.setattr(_QuotaClient, "refusals", 99)
+    monkeypatch.setattr(_QuotaClient, "target", "gemini-custom-flash")
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-custom-flash")
+    monkeypatch.setattr(gemini.httpx, "AsyncClient", _QuotaClient)
+    monkeypatch.setattr(gemini.asyncio, "sleep", no_wait)
+    asyncio.run(gemini.call_gemini([{"role": "user", "parts": [{"text": "hi"}]}]))

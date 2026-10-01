@@ -266,6 +266,34 @@ _TRANSIENT_STATUS = frozenset({429, 500, 502, 503, 504})
 _MAX_ATTEMPTS = 3
 _BACKOFF_S = 1.5
 
+#: Longest wait honoured from Google's own retryDelay on a 429. A turn makes two
+#: or three calls and the function has 60 s, so a longer wait would time the
+#: whole turn out; past this the fallback model is tried instead.
+_MAX_RETRY_WAIT_S = 12.0
+
+
+def _quota(error: dict[str, Any]) -> tuple[float | None, bool]:
+    """Google's suggested wait, and whether the spent quota is a daily one.
+
+    A 429 says "You exceeded your current quota" for both a per-minute and a
+    per-day limit. The details distinguish them, and the difference decides
+    what to do: a per-minute limit clears in seconds, a daily one does not.
+    """
+    delay: float | None = None
+    daily = False
+    for item in error.get("details") or []:
+        kind = str(item.get("@type", ""))
+        if kind.endswith("RetryInfo"):
+            raw = str(item.get("retryDelay", "")).rstrip("s")
+            try:
+                delay = float(raw)
+            except ValueError:
+                delay = None
+        if kind.endswith("QuotaFailure"):
+            ids = " ".join(str(v.get("quotaId", "")) for v in item.get("violations") or [])
+            daily = "PerDay" in ids
+    return delay, daily
+
 
 async def _post(
     model: str,
@@ -301,10 +329,15 @@ async def _post(
         # The body can echo request content; only the status and the API's own
         # short message are propagated, and never the key.
         detail = ""
+        error: dict[str, Any] = {}
         try:
-            detail = response.json().get("error", {}).get("message", "")[:200]
+            error = response.json().get("error", {}) or {}
+            detail = str(error.get("message", ""))[:200]
         except (ValueError, AttributeError):
             detail = ""
+        delay, daily = _quota(error) if response.status_code == 429 else (None, False)
+        if response.status_code == 429:
+            detail = f"{'daily' if daily else 'per-minute'} quota exhausted for {model}. {detail}"
 
         fallback = fallback_model()
         if (
@@ -320,6 +353,28 @@ async def _post(
         # degrading a question the system could have answered -- and telling the
         # user the language layer is unavailable -- is a worse outcome than
         # waiting two seconds.
+        # A daily quota does not clear in seconds: retrying only spends the
+        # turn's time budget. Straight to the fallback model, whose quota is
+        # separate.
+        if response.status_code == 429 and daily:
+            if allow_fallback and model != fallback:
+                return await _fallback(model, fallback, key, body, "daily quota")
+            raise GeminiError(f"Gemini returned 429: {detail}")
+
+        # A per-minute limit names its own wait. Honoured once when it fits the
+        # budget, because the exponential backoff below (1.5 s, 3 s) ends long
+        # before a per-minute window does.
+        if (
+            response.status_code == 429
+            and delay is not None
+            and delay <= _MAX_RETRY_WAIT_S
+            and attempt == 0
+        ):
+            await asyncio.sleep(delay + 0.5)
+            return await _post(
+                model, key, body, allow_fallback=allow_fallback, attempt=_MAX_ATTEMPTS - 2
+            )
+
         if response.status_code in _TRANSIENT_STATUS and attempt < _MAX_ATTEMPTS - 1:
             await asyncio.sleep(_BACKOFF_S * (2**attempt))
             return await _post(model, key, body, allow_fallback=allow_fallback, attempt=attempt + 1)
