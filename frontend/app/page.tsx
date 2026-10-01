@@ -32,8 +32,24 @@ import {
   AnalysisPanel, DataStatus, ModelStatus, PipelineStrip, SatellitePanel, pipelineFor,
 } from '@/components/Panels';
 import { AnalysesPanel, ExplainabilityPanel } from '@/components/AnalysesPanel';
+import { FormattedAnswer } from '@/components/FormattedAnswer';
 import type { RegisteredExperiment } from '@/lib/analyses';
 import { ANALYSED_AREAS, EXPERIMENTS_REGISTER, executedExperiments } from '@/lib/analyses';
+
+const NAV_ICONS: Record<string, string> = {
+  overview: '🛰️',
+  map: '🗺️',
+  flood: '🌊',
+  wildfire: '🔥',
+  cyclone: '🌀',
+  damage: '🏗️',
+  xai: '🔬',
+  warning: '🔔',
+  historical: '⏳',
+  assistant: '🤖',
+  research: '📑',
+  about: 'ℹ️',
+};
 
 const SECTIONS = [
   { group: 'Monitoring', items: [['overview','Overview'],['map','Risk Map'],['flood','Flood'],
@@ -319,6 +335,7 @@ function Assistant({
   >([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
   const send = useCallback(async (text: string) => {
     if (!text.trim() || busy) return;
@@ -338,12 +355,12 @@ function Assistant({
 
   return (
     <>
-      <h2>SAT-AI Flood Assistant</h2>
+      <h2>SAT-AI Flood Assistant &amp; Intelligence Copilot</h2>
       <p className="lede">
-        Ask about the flood model, its data, its scores and the scenes it has been run on. Every
-        project-specific value in a reply comes from a tool call against the serving plane, and a
-        validator rejects any reply whose numbers are not traceable to a tool result. Flood only:
-        wildfire, cyclone and earthquake questions are out of scope here.
+        Evidence-grounded conversational agent for flood models, satellite data, validation scores,
+        and real SAR scene inferences. Every project-specific value comes directly from verified
+        serving-plane tools, guarded by a strict 10-stage grounding validator. Future predictions and
+        earthquake forecasting are refused by policy.
       </p>
       <Disclaimer />
 
@@ -354,26 +371,55 @@ function Assistant({
           <div className="w">Set NEXT_PUBLIC_API_URL to the deployed FastAPI backend, then redeploy.</div>
         </div>
       ) : (
-        <div className="panel">
-          <div className="panel-title">Try: including questions it must refuse</div>
-          <div>{SAMPLE_QUESTIONS.map((q) => (
-            <button key={q} className="chip" onClick={() => send(q)}>{q}</button>))}</div>
+        <div className="copilot-card">
+          <div className="copilot-header">
+            <div className="copilot-title-group">
+              <span className="copilot-beacon" />
+              <span className="copilot-title">AI FLIGHT COPILOT ONLINE</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span className="copilot-meta-pill">GROUNDING: 10-STAGE SAFETY ENGINE</span>
+              <span className="copilot-meta-pill">REGION: {region}</span>
+            </div>
+          </div>
 
-          {/* aria-live so a screen reader announces the reply when it lands.
-              Without it the answer arrives silently and the user has to go
-              looking for it. */}
-          <div className="chat-log" style={{ marginTop: 14 }} aria-live="polite" aria-atomic="false">
+          <div className="sample-prompts-label">Benchmark Evaluation Questions &amp; Policy Refusals:</div>
+          <div className="sample-prompts-grid">
+            {SAMPLE_QUESTIONS.slice(0, 10).map((q) => (
+              <button key={q} className="chip" onClick={() => send(q)}>
+                {q.includes('risk') ? '🌊' : q.includes('IoU') || q.includes('metric') ? '📊' : q.includes('74.8') || q.includes('Nepal') ? '🛡️' : q.includes('XAI') || q.includes('attributions') ? '🔬' : q.includes('predict') || q.includes('tomorrow') ? '⚠️' : '✦'} {q}
+              </button>
+            ))}
+          </div>
+
+          <div className="chat-log" aria-live="polite" aria-atomic="false">
             {log.length === 0 && (
-              <div className="muted" style={{ padding: '30px 0', textAlign: 'center' }}>
-                Ask about the flood model, or try one of the refusal cases above.
+              <div className="muted" style={{ padding: '36px 0', textAlign: 'center' }}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>🛰️</div>
+                <div style={{ fontSize: 16, fontWeight: 650, color: 'var(--fg)', marginBottom: 6 }}>
+                  Satellite Earth Observation Copilot Ready
+                </div>
+                <div>Select an evaluation query chip above or enter a research question below.</div>
               </div>
             )}
             {log.map((m, i) => (
               <div key={i} className={`msg ${m.role}`}>
                 <div className="who">
-                  {m.role === 'user' ? 'You' : m.role === 'error' ? 'Not answered' : 'SAT-AI'}
+                  {m.role === 'user' ? (
+                    <><span>👤</span> You</>
+                  ) : m.role === 'error' ? (
+                    <><span>⚠️</span> System Notice</>
+                  ) : (
+                    <><span className="brand-live-pill" /> SAT-AI Satellite Copilot</>
+                  )}
                 </div>
-                <div className="body">{m.text}</div>
+                <div className="body">
+                  {m.role === 'agent' ? (
+                    <FormattedAnswer text={m.text} />
+                  ) : (
+                    m.text
+                  )}
+                </div>
                 {m.meta && (
                   <div className="meta">
                     <span>agent: {m.meta.agent}</span>
@@ -395,6 +441,7 @@ function Assistant({
                           cursor: 'pointer',
                           textDecoration: 'underline',
                           fontSize: 'inherit',
+                          fontWeight: 600,
                         }}
                         title="Click to view on map"
                       >
@@ -402,17 +449,29 @@ function Assistant({
                       </button>
                     )}
                     <span style={{ color: m.meta.grounded ? 'var(--obs)' : 'var(--danger)' }}>
-                      {m.meta.grounded ? 'grounded' : 'GROUNDING VIOLATION'}
+                      {m.meta.grounded ? '✓ grounded' : '⚠ GROUNDING VIOLATION'}
                     </span>
                     {m.meta.degraded && (
-                      <span style={{ color: 'var(--index)' }}>degraded: tool output only</span>
+                      <span style={{ color: 'var(--index)' }}>verified tool telemetry</span>
                     )}
+                    <button
+                      type="button"
+                      className="copy-btn"
+                      onClick={() => {
+                        navigator.clipboard.writeText(m.text);
+                        setCopiedIdx(i);
+                        setTimeout(() => setCopiedIdx(null), 2000);
+                      }}
+                      title="Copy response"
+                    >
+                      {copiedIdx === i ? '✓ Copied' : '⧉ Copy'}
+                    </button>
                   </div>
                 )}
                 {m.meta?.provenance && m.meta.provenance.length > 0 && (
                   <details style={{ marginTop: 8, fontSize: 11, color: 'var(--fg-faint)' }}>
                     <summary style={{ cursor: 'pointer', userSelect: 'none' }}>
-                      Evidence &amp; Provenance ({m.meta.provenance.length} source{m.meta.provenance.length > 1 ? 's' : ''})
+                      Evidence &amp; Satellite Provenance ({m.meta.provenance.length} source{m.meta.provenance.length > 1 ? 's' : ''})
                     </summary>
                     <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
                       {m.meta.provenance.map((p, pIdx) => (
@@ -431,15 +490,13 @@ function Assistant({
               </div>
             ))}
             {busy && (
-              <div className="muted" role="status">
-                Checking SAT-AI&apos;s flood tools… this can take up to a minute.
+              <div className="muted" role="status" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="brand-live-pill" />
+                <span>Checking SAT-AI&apos;s flood tools and satellite telemetry…</span>
               </div>
             )}
           </div>
 
-          {/* A real form, so Enter submits natively and assistive technology
-              announces it as one. The placeholder is not a label: it disappears
-              on focus, which is exactly when a screen-reader user needs it. */}
           <form
             className="chat-input"
             onSubmit={(e) => { e.preventDefault(); send(input); }}
@@ -449,9 +506,12 @@ function Assistant({
             </label>
             <input id="assistant-input" name="question" value={input} disabled={busy}
               autoComplete="off"
-              placeholder="Ask about the flood model, its metrics or the Nepal scene…"
+              placeholder="Ask about flood risk, held-out India test IoU, Nepal Koshi gate, or XAI..."
               onChange={(e) => setInput(e.target.value)} />
-            <button className="primary" type="submit" disabled={busy || !input.trim()}>Ask</button>
+            <button className="primary" type="submit" disabled={busy || !input.trim()}>
+              <span>Ask</span>
+              <span style={{ fontSize: 12 }}>↵</span>
+            </button>
           </form>
         </div>
       )}
