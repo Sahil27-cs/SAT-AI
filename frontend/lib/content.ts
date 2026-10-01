@@ -177,6 +177,12 @@ export const ALERT_FORBIDDEN: string[] = [
  * only shows easy questions does not show the part that matters.
  */
 export const SAMPLE_QUESTIONS: string[] = [
+  'What is the current flood risk in bihar_ganga?',
+  'What model do you use for flood detection?',
+  'What is the India test IoU?',
+  'What happened with the 74.8 km² result in Nepal Koshi?',
+  'What are the XAI attributions for VV, VH and VV/VH ratio?',
+  'Can you predict whether Mumbai will flood tomorrow?',
   'Explain the flood model',
   'What is the India test performance?',
   'What is the Mekong validation score?',
