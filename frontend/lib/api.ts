@@ -30,7 +30,7 @@ export const SUPABASE_KEY =
  */
 export const API_URL =
   cleanEnv(process.env.NEXT_PUBLIC_API_URL) ??
-  'https://sat-ai-api-chiragpednekar3-8808s-projects.vercel.app';
+  'https://sat-ai-api-sahil.vercel.app';
 
 export type StudyRole = 'training' | 'transfer_evaluation' | 'candidate';
 

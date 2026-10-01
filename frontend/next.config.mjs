@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const backendUrl =
   process.env.NEXT_PUBLIC_API_URL ||
-  'https://sat-ai-api-chiragpednekar3-8808s-projects.vercel.app';
+  'https://sat-ai-api-sahil.vercel.app';
 
 const nextConfig = {
   reactStrictMode: true,
