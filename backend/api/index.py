@@ -494,6 +494,13 @@ async def health() -> dict[str, Any]:
         checks["database"] = f"unavailable ({exc.status_code})"
     llm = describe_configuration()
     checks["llm"] = "configured" if llm["configured"] else "not_configured"
+    if llm["configured"] and llm.get("key_problem"):
+        # Present but unusable. Named, never quoted: key_problem describes the
+        # defect (a line break, a space) without any part of the value, and
+        # without it a broken key reads as "configured" until every chat turn
+        # silently degrades.
+        checks["llm"] = "misconfigured"
+        checks["llm_key_problem"] = str(llm["key_problem"])
     checks["llm_provider"] = llm["provider"]
     if llm["model"]:
         checks["llm_model"] = llm["model"]

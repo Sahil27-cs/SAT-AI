@@ -645,3 +645,22 @@ def test_the_degraded_summary_states_only_tool_values(
     assert grounded, ungrounded
     for wrong in ("4,831", "288", "0.4357", "0.98", "28%", "202008"):
         assert wrong not in summary
+
+
+def test_health_names_a_present_but_unusable_key_without_quoting_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A key pasted with a line break read as "configured" while every turn degraded."""
+    from fastapi.testclient import TestClient
+
+    sentinel = "not-a-real-key-SENTINEL"
+    monkeypatch.setenv("GEMINI_API_KEY", f"{sentinel}\nsecond-line")
+
+    async def no_rows(*_a: Any, **_k: Any) -> list[dict[str, Any]]:
+        return []
+
+    monkeypatch.setattr(index, "_query", no_rows)
+    body = TestClient(index.app).get("/health").json()
+    assert body["checks"]["llm"] == "misconfigured"
+    assert "line break" in body["checks"]["llm_key_problem"]
+    assert "SENTINEL" not in str(body)

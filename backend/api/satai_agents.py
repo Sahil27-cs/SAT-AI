@@ -796,7 +796,10 @@ async def answer(request: ChatRequest) -> ChatResponse:
                     f"Tool budget of {max_rounds} rounds reached; the final "
                     f"turn was generated without further tool access."
                 )
-    except GeminiNotConfigured:
+    except GeminiNotConfigured as exc:
+        # The exception names the defect (unset, a line break, a space) and
+        # never the value; "not configured" alone hid a key that was set but
+        # unusable.
         return _degraded(
             request,
             agent,
@@ -804,7 +807,7 @@ async def answer(request: ChatRequest) -> ChatResponse:
             results,
             region_ids,
             called,
-            "GEMINI_API_KEY is not configured.",
+            f"Language layer unavailable: {exc}",
         )
     except GeminiError as exc:
         return _degraded(
