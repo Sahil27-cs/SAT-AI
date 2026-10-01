@@ -139,6 +139,17 @@ FLOOD_TOOL_DECLARATIONS: list[dict[str, Any]] = [
         "parameters": {"type": "object", "properties": {}},
     },
     {
+        "name": "get_ground_truth_info",
+        "description": (
+            "The training and evaluation dataset and its ground truth: "
+            "Sen1Floods11 v1.1 HandLabeled, chip and event counts, the "
+            "leave-one-region-out split, what the LabelHand values mean and how "
+            "unannotated pixels are handled. Also states where NO ground truth "
+            "exists (real scenes SAT-AI has run)."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
         "name": "get_flood_scene_status",
         "description": (
             "Every flood analysis actually run on a real satellite scene for a "
@@ -179,6 +190,56 @@ FLOOD_TOOL_DECLARATIONS: list[dict[str, Any]] = [
             "causes flooding."
         ),
         "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_xai_summary",
+        "description": (
+            "Model attribution for the flood U-Net: integrated gradients and "
+            "occlusion over held-out India chips, as each band's share of total "
+            "attribution. Describes what the MODEL relied on, not what physically "
+            "causes flooding."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_risk_summary",
+        "description": (
+            "Multi-hazard risk formulation R_h = H_h^alpha * E^beta * V^gamma "
+            "(multiplicative; ADR-008), default exponents, non-averaging principle, "
+            "C4 sensitivity analysis results, and whether validated regional risk "
+            "inputs exist for a study area. Explains that regional risk maps are "
+            "not fabricated without validated inputs."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "region": _REGION,
+                "hazard": {
+                    "type": "string",
+                    "enum": ["flood", "wildfire", "cyclone", "damage"],
+                    "description": "Hazard type, default is flood.",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_provenance",
+        "description": (
+            "Provenance and metadata for models and satellite scenes: source scene ID, "
+            "acquisition date, platform, sensor, bands, preprocessing steps, model "
+            "version, experiment ID, training dataset, and Track A/B validation status."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "region": _REGION,
+                "hazard": {
+                    "type": "string",
+                    "enum": ["flood", "wildfire", "cyclone", "damage"],
+                    "description": "Hazard type, default is flood.",
+                },
+            },
+        },
     },
     {
         "name": "get_sar_band_guide",
@@ -546,14 +607,147 @@ def _scope() -> dict[str, Any]:
     }
 
 
+def _risk_summary(region: str | None, hazard: str = "flood") -> dict[str, Any]:
+    areas = _areas(region)
+    if region and not areas:
+        known = [a.get("id") for a in analysis_catalogue().get("study_areas") or []]
+        return _unavailable(
+            f"{region!r} is not a SAT-AI study area. Known: {', '.join(map(str, known))}."
+        )
+
+    regional_note = (
+        f"For {region}, regional risk assessment requires validated hazard extent and "
+        f"validated exposure/vulnerability data. When hazard inference is withheld by the "
+        f"distribution gate (e.g. Nepal Koshi scene) or fine-scale vulnerability data is "
+        f"unobserved, no regional risk map is fabricated."
+        if region
+        else (
+            "Regional risk requires validated hazard, exposure, "
+            "and vulnerability inputs per study area."
+        )
+    )
+
+    return {
+        "available": True,
+        "source_kind": "derived",
+        "hazard": hazard,
+        "formulation": "R_h = H_h^alpha * E^beta * V^gamma (multiplicative; ADR-008)",
+        "boundary_condition": "E = 0 implies R = 0 (an uninhabited floodplain has zero risk)",
+        "default_exponents": {"alpha": 1.0, "beta": 1.0, "gamma": 1.0},
+        "non_averaging_principle": (
+            "Per-hazard scores are outputs of different models with different base rates "
+            "and are never averaged across hazards "
+            "(mean of incommensurable scores denotes nothing)."
+        ),
+        "sensitivity_analysis_c4": {
+            "parameter_grid": [0.5, 0.75, 1.0, 1.5, 2.0],
+            "spearman_rank_correlation_min": 0.98,
+            "band_reassignment_fraction_max": 0.28,
+            "finding": (
+                "Spatial ranking is highly stable (rho >= 0.98), but discrete band reassignment "
+                "reaches up to 28% because continuous risk is sliced by threshold boundaries."
+            ),
+        },
+        "regional_status": regional_note,
+        "has_validated_regional_map": False,
+        "caveats": [
+            "SAT-AI prototype research risk level. This is NOT an official warning.",
+            "Official flood warnings in India come from IMD, CWC, NDMA, and State SDMAs.",
+            "Vulnerability is a proxy index and does not represent socioeconomic inequality.",
+        ],
+    }
+
+
+def _provenance(region: str | None, hazard: str = "flood") -> dict[str, Any]:
+    areas = _areas(region)
+    if region and not areas:
+        known = [a.get("id") for a in analysis_catalogue().get("study_areas") or []]
+        return _unavailable(
+            f"{region!r} is not a SAT-AI study area. Known: {', '.join(map(str, known))}."
+        )
+
+    runs, _ = _flood_runs(region)
+    scenes_provenance: list[dict[str, Any]] = []
+    for area, analysis in runs:
+        obs = analysis.get("observation") or {}
+        model = analysis.get("model") or {}
+        validation = analysis.get("validation") or {}
+        m_name = model.get("name", "flood_unet")
+        m_ver = model.get("version", "1.0.0+loro_india")
+        train_ds = (
+            "Sen1Floods11 v1.1 HandLabeled "
+            "(446 chips, 11 flood events, 68 held-out India test chips)"
+        )
+        is_blocked = analysis.get("displayable") is False
+        scenes_provenance.append(
+            {
+                "region": area["id"],
+                "region_name": area.get("name"),
+                "source_scene": obs.get("scene_id"),
+                "acquisition_date": obs.get("acquired_at"),
+                "satellite_platform": obs.get("platform", "SENTINEL-1A"),
+                "sensor": "C-SAR (IW mode, GRD)",
+                "provider": obs.get("provider", "planetary_computer"),
+                "collection": obs.get("collection", "sentinel-1-rtc"),
+                "radiometry": obs.get("radiometry", "gamma0_rtc_linear"),
+                "resolution_m": obs.get("resolution_m", 10.0),
+                "bands": model.get("bands", ["vv_db", "vh_db", "vv_vh_ratio"]),
+                "preprocessing": [
+                    "Planetary Computer radiometric terrain correction (RTC)",
+                    "Linear to dB conversion: 10 * log10(gamma0)",
+                    "Ratio band calculation: VV_dB - VH_dB",
+                    "Track A/B distribution check against Sen1Floods11 training distribution",
+                ],
+                "model_version": f"{m_name} {m_ver}",
+                "experiment_id": "loro_india_sar_ratio",
+                "training_dataset": train_ds,
+                "validation_status": "BLOCKED" if is_blocked else "VALIDATED",
+                "gate_verdict": validation.get("verdict"),
+                "displayable_on_map": analysis.get("displayable") is True,
+                "caveats": [
+                    analysis.get("withheld_reason")
+                    if analysis.get("displayable") is False
+                    else "Archived satellite analysis",
+                    NOT_OFFICIAL,
+                ],
+            }
+        )
+
+    model_card = _facts_section("model") or {}
+    return {
+        "available": True,
+        "source_kind": "catalogue",
+        "model_provenance": {
+            "model": model_card.get("name", "flood_unet"),
+            "architecture": model_card.get("architecture", "U-Net, trained from scratch"),
+            "parameters": model_card.get("parameters", 7763041),
+            "parameters_millions": round(model_card.get("parameters", 7763041) / 1e6, 2),
+            "training_dataset": "Sen1Floods11 v1.1 HandLabeled",
+            "training_chips": 333,
+            "validation_chips": 30,
+            "test_chips": 68,
+            "evaluation_split": "Leave-one-region-out (LORO), India held out completely",
+            "bands": model_card.get("bands", ["vv_db", "vh_db", "vv_vh_ratio"]),
+            "decision_rule": "sigmoid(logit) >= 0.5",
+        },
+        "scenes_provenance": scenes_provenance,
+        "caveats": [
+            "Every quantitative output is linked to its source satellite scene and model manifest.",
+            "Archived research analysis, not real-time monitoring.",
+            NOT_OFFICIAL,
+        ],
+    }
+
+
 def execute_flood_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Run one flood tool. Data absence is a result, never an exception."""
     region = arguments.get("region") or None
+    hazard = str(arguments.get("hazard") or "flood")
     if name == "get_flood_model_info":
         return _model_info()
     if name == "get_flood_metrics":
         return _metrics(str(arguments.get("split") or "india_test"))
-    if name == "get_flood_ground_truth":
+    if name in {"get_flood_ground_truth", "get_ground_truth_info"}:
         return _ground_truth()
     if name == "get_flood_scene_status":
         return _scene_status(region)
@@ -561,8 +755,12 @@ def execute_flood_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return _gate(region)
     if name == "get_flood_inference_summary":
         return _inference_summary(region)
-    if name == "get_flood_xai":
+    if name in {"get_flood_xai", "get_xai_summary"}:
         return _xai()
+    if name == "get_risk_summary":
+        return _risk_summary(region, hazard)
+    if name == "get_provenance":
+        return _provenance(region, hazard)
     if name == "get_sar_band_guide":
         return _band_guide()
     if name == "get_system_scope":

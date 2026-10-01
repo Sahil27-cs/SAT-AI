@@ -185,29 +185,79 @@ export async function askAgent(message: string, region: string | null): Promise<
   if (!API_URL) throw new Error('NEXT_PUBLIC_API_URL is not configured.');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}/api/v1/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, region }),
-      signal: controller.signal,
-    });
-  } catch (e) {
-    throw new Error(
-      (e as Error).name === 'AbortError'
-        ? 'The assistant took too long to answer. Try again, or ask a shorter question.'
-        : 'The SAT-AI backend could not be reached. Check your connection and try again.',
-    );
-  } finally {
-    clearTimeout(timer);
+  let res: Response | null = null;
+  const body = JSON.stringify({ message, region });
+
+  // Preferred endpoint: /api/chat. Fallback: /api/v1/chat or same-origin rewrite.
+  const endpoints = [
+    `${API_URL}/api/chat`,
+    `${API_URL}/api/v1/chat`,
+    '/api/chat',
+  ];
+
+  let lastError: Error | null = null;
+
+  for (const url of endpoints) {
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: controller.signal,
+      });
+      if (res.status === 404 && url !== endpoints[endpoints.length - 1]) {
+        // Route not found at this path, try next endpoint
+        continue;
+      }
+      break;
+    } catch (e) {
+      lastError = e as Error;
+      if (lastError.name === 'AbortError') {
+        clearTimeout(timer);
+        throw new Error(
+          'The assistant took too long to answer. Try again, or ask a shorter question.',
+        );
+      }
+      // Continue to next endpoint (e.g. same-origin proxy if CORS failed)
+    }
   }
+
+  clearTimeout(timer);
+
+  if (!res) {
+    const msg = lastError?.message || '';
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')) {
+      throw new Error(
+        'SAT-AI backend is unreachable or CORS blocked. Please verify the API deployment.',
+      );
+    }
+    throw new Error(`The SAT-AI backend could not be reached: ${msg || 'network error'}.`);
+  }
+
   if (res.status === 429) {
     throw new Error('Too many questions in a short time. Wait a minute and ask again.');
   }
-  if (res.status === 422) throw new Error('That question could not be sent. Try rephrasing it.');
-  if (!res.ok) throw new Error(`The SAT-AI backend returned an error (${res.status}).`);
-  return res.json();
+  if (res.status === 422) {
+    throw new Error('That question could not be sent (validation error). Try rephrasing it.');
+  }
+  if (res.status === 500) {
+    throw new Error('SAT-AI backend returned an internal error (500).');
+  }
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    throw new Error('SAT-AI backend service is temporarily unavailable. Please retry shortly.');
+  }
+  if (!res.ok) {
+    throw new Error(`The SAT-AI backend returned an error (${res.status}).`);
+  }
+
+  let data: ChatReply;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('SAT-AI backend returned a malformed response.');
+  }
+
+  return data;
 }
 
 /** Which model wrote this reply, read from the notes the backend attaches. */
@@ -220,10 +270,17 @@ export async function getHealth(): Promise<Record<string, unknown> | null> {
   if (!API_URL) return null;
   try {
     const res = await fetch(`${API_URL}/health`, { cache: 'no-store' });
-    return res.ok ? res.json() : null;
+    if (res.ok) return res.json();
   } catch {
-    return null;
+    // Cross-origin failed; try same-origin proxy
   }
+  try {
+    const fallback = await fetch('/health', { cache: 'no-store' });
+    if (fallback.ok) return fallback.json();
+  } catch {
+    // Both failed
+  }
+  return null;
 }
 
 /** Data age in words. The distinction the UI exists to preserve. */

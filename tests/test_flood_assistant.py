@@ -492,3 +492,106 @@ def test_the_tool_round_budget_comes_from_the_environment(
     assert script.requests[0]["tools"] is not None
     assert script.requests[1]["tools"] is None
     assert response.grounded is True
+
+
+# --- all nine required flood tools and queries ------------------------------
+
+
+def test_all_nine_required_flood_tools_are_offered() -> None:
+    required = {
+        "get_flood_model_info",
+        "get_flood_metrics",
+        "get_ground_truth_info",
+        "get_flood_scene_status",
+        "get_distribution_gate",
+        "get_flood_inference_summary",
+        "get_xai_summary",
+        "get_risk_summary",
+        "get_provenance",
+    }
+    offered = {t["name"] for t in tools.TOOL_DECLARATIONS}
+    assert required <= offered
+    assert required <= flood.FLOOD_TOOL_NAMES
+
+
+def test_get_ground_truth_info_returns_authoritative_facts() -> None:
+    gt = run("get_ground_truth_info")
+    assert gt["available"] is True
+    assert gt["dataset"]["name"] == "Sen1Floods11 v1.1 HandLabeled"
+    assert gt["dataset"]["n_chips"] == 446
+    assert gt["dataset"]["n_events"] == 11
+    assert gt["dataset"]["split"]["test_chips"] == 68
+    assert gt["ground_truth"]["name"] == "Sen1Floods11 LabelHand"
+    assert gt["ground_truth"]["values"] == {"1": "water", "0": "not water", "-1": "not annotated"}
+
+
+def test_get_xai_summary_returns_grounded_attributions() -> None:
+    xai = run("get_xai_summary")
+    assert xai["available"] is True
+    assert xai["model"] == "flood_unet"
+    assert xai["n_chips"] == 12
+    assert xai["attribution_share_percent"] == {
+        "vv_db": 29.8,
+        "vh_db": 16.8,
+        "vv_vh_ratio": 53.4,
+    }
+    assert any("not physical causation" in c for c in xai["caveats"])
+
+
+def test_get_risk_summary_returns_formulation_and_c4_sensitivity() -> None:
+    risk = run("get_risk_summary", region="nepal_koshi_terai")
+    assert risk["available"] is True
+    assert "H_h^alpha * E^beta * V^gamma" in risk["formulation"]
+    assert risk["default_exponents"] == {"alpha": 1.0, "beta": 1.0, "gamma": 1.0}
+    assert "E = 0 implies R = 0" in risk["boundary_condition"]
+    assert risk["sensitivity_analysis_c4"]["spearman_rank_correlation_min"] >= 0.98
+    assert risk["has_validated_regional_map"] is False
+    assert "requires validated hazard extent" in risk["regional_status"]
+
+
+def test_get_provenance_returns_complete_scene_and_model_trace() -> None:
+    prov = run("get_provenance", region="nepal_koshi_terai")
+    assert prov["available"] is True
+    assert prov["model_provenance"]["model"] == "flood_unet"
+    assert prov["model_provenance"]["parameters_millions"] == 7.76
+    scene = next(s for s in prov["scenes_provenance"] if s["region"] == "nepal_koshi_terai")
+    assert scene["source_scene"] == (
+        "S1A_IW_GRDH_1SDV_20240927T001159_20240927T001224_055843_06D317_rtc"
+    )
+    assert "2024-09-27" in scene["acquisition_date"]
+    assert scene["satellite_platform"] == "SENTINEL-1A"
+    assert scene["radiometry"] == "gamma0_rtc_linear"
+    assert scene["validation_status"] == "BLOCKED"
+    assert scene["gate_verdict"] == "fail"
+    assert scene["displayable_on_map"] is False
+
+
+def test_flood_forecasting_tomorrow_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    script = _Script([])
+    response = _ask(monkeypatch, "Can you predict whether Mumbai will flood tomorrow?", script)
+    assert response.route_method == "refusal_rule"
+    assert "SAT-AI does not forecast hazard timing or occurrence" in response.answer
+    assert script.requests == []
+
+
+def test_chatbot_answers_74_8_km2_case_honestly(monkeypatch: pytest.MonkeyPatch) -> None:
+    script = _Script(
+        [
+            ("", [("get_flood_inference_summary", {"region": "nepal_koshi_terai"})]),
+            (
+                "The model generated a raw 74.8 km² inference, but the distribution gate "
+                "rejected the scene because its input distribution differed from the "
+                "training distribution. Therefore the result is not treated as a "
+                "validated flood extent and is not displayed as confirmed flooding. "
+                "This is not an official warning; official sources in Nepal include DHM.",
+                [],
+            ),
+        ]
+    )
+    response = _ask(monkeypatch, "What happened with the 74.8 km2 result?", script)
+    assert response.grounded is True
+    assert "74.8" in response.answer
+    assert (
+        "not confirmed flooding" in response.answer
+        or "not displayed as confirmed flooding" in response.answer
+    )

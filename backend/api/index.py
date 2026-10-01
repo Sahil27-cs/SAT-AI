@@ -87,12 +87,14 @@ if not os.environ.get("SUPABASE_URL"):
         PUBLIC_SUPABASE_URL,
     )
 
-# CORS. The default is the local dev origin, matching satai.config.APISettings --
-# a wildcard default means a deployment that forgets to configure it is open to
-# every origin on the web, which is the wrong way round for a default.
+# CORS. Allow localhost and the production frontend by default.
+DEFAULT_ORIGINS = (
+    "http://localhost:3000,http://127.0.0.1:3000,"
+    "https://sat-ai-murex.vercel.app"
+)
 ALLOWED_ORIGINS = [
     o.strip()
-    for o in os.environ.get("CORS_ALLOW_ORIGINS", "http://localhost:3000").split(",")
+    for o in os.environ.get("CORS_ALLOW_ORIGINS", DEFAULT_ORIGINS).split(",")
     if o.strip()
 ]
 
@@ -119,6 +121,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"^https://sat-ai-.*\.vercel\.app$",
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -926,6 +929,7 @@ async def experiments() -> list[Experiment]:
     ]
 
 
+@app.post("/api/chat", response_model=ChatResponse, tags=["agents"])
 @app.post("/api/v1/chat", response_model=ChatResponse, tags=["agents"])
 async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
     """Conversational interface.

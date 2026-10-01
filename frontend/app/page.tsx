@@ -381,14 +381,52 @@ function Assistant({
                     <span>tools: {m.meta.tools_called.join(' → ') || 'none'}</span>
                     {answeredBy(m.meta) && <span>model: {answeredBy(m.meta)}</span>}
                     {m.meta.map_actions?.length > 0 && (
-                      <span style={{ color: 'var(--accent)' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const action = m.meta!.map_actions[m.meta!.map_actions.length - 1];
+                          if (onMapAction) onMapAction(action.region, action.activate_layers);
+                        }}
+                        style={{
+                          color: 'var(--accent)',
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          fontSize: 'inherit',
+                        }}
+                        title="Click to view on map"
+                      >
                         map → {m.meta.map_actions[m.meta.map_actions.length - 1].region}
-                      </span>
+                      </button>
                     )}
                     <span style={{ color: m.meta.grounded ? 'var(--obs)' : 'var(--danger)' }}>
-                      {m.meta.grounded ? 'grounded' : 'GROUNDING VIOLATION'}</span>
-                    {m.meta.degraded && <span style={{ color: 'var(--index)' }}>degraded: tool output only</span>}
+                      {m.meta.grounded ? 'grounded' : 'GROUNDING VIOLATION'}
+                    </span>
+                    {m.meta.degraded && (
+                      <span style={{ color: 'var(--index)' }}>degraded: tool output only</span>
+                    )}
                   </div>
+                )}
+                {m.meta?.provenance && m.meta.provenance.length > 0 && (
+                  <details style={{ marginTop: 8, fontSize: 11, color: 'var(--fg-faint)' }}>
+                    <summary style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Evidence &amp; Provenance ({m.meta.provenance.length} source{m.meta.provenance.length > 1 ? 's' : ''})
+                    </summary>
+                    <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
+                      {m.meta.provenance.map((p, pIdx) => (
+                        <li key={pIdx}>
+                          <code>{p.source_id}</code> [{p.source_kind}]
+                          {p.caveats && p.caveats.length > 0 && (
+                            <span style={{ display: 'block', color: 'var(--fg-faint)', fontStyle: 'italic' }}>
+                              {p.caveats[0]}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
               </div>
             ))}
@@ -839,24 +877,16 @@ export default function Page() {
                 </tbody>
               </table>
             </div>
-            <div className="unavailable">
-              <div className="h">No explanation artifacts yet</div>
-              <p className="r">
-                Explanations are computed in the batch plane alongside each prediction, not on
-                request — SHAP on demand would blow the API latency budget. No predictions have been
-                produced, so there are no attributions to show.
-              </p>
-              <div className="w">ml/flood/explain.py, after a completed inference run</div>
-            </div>
+            <ExplainabilityPanel />
           </>
         )}
 
         {section === 'warning' && (
           <>
-            <h2>Early Warning</h2>
+            <h2>Early Warning &amp; Decision Support</h2>
             <p className="lede">
-              SAT-AI generates structured risk alerts for research purposes. The language it uses is
-              deliberately constrained: it reports model-estimated risk, never that a hazard will occur.
+              SAT-AI generates structured risk assessments and decision-support outputs for research purposes.
+              The language it uses is deliberately constrained: it reports model-estimated risk, never that a hazard will occur.
             </p>
             <Disclaimer />
             <div className="panel">
@@ -866,10 +896,20 @@ export default function Page() {
                 <div><h3 style={{ marginTop: 0, color: 'var(--danger)' }}>Never emitted</h3><List items={ALERT_FORBIDDEN} /></div>
               </div>
             </div>
-            <div className="unavailable">
-              <div className="h">No alerts</div>
-              <p className="r">No hazard analyses exist, so no alert objects have been generated.</p>
-              <div className="w">Alerts are emitted by the risk engine after an inference run.</div>
+            <div className="panel">
+              <div className="panel-title">Decision-Support Architecture &amp; State</div>
+              <p className="muted" style={{ marginBottom: 10 }}>
+                Early warning outputs are model-derived hazard indices and decision-support outputs (research prototype).
+                They are NOT operational government warnings.
+              </p>
+              <div className="unavailable">
+                <div className="h">No speculative alerts emitted</div>
+                <p className="r">
+                  Alert objects are only emitted when validated hazard evidence exceeds prototype risk thresholds.
+                  Unvalidated runs (such as the distribution-gate-blocked Nepal scene) and areas without validated regional exposure do not emit alerts.
+                </p>
+                <div className="w">Decision-support output — requires validated hazard and regional exposure</div>
+              </div>
             </div>
           </>
         )}

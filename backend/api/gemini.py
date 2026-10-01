@@ -326,6 +326,11 @@ async def _post(
         if allow_fallback and response.status_code == 429 and model != fallback:
             return await _fallback(model, fallback, key, body, "quota")
 
+        # Capacity spikes (503, 502, 504) that persist across all retries should
+        # also try the fallback model once rather than failing.
+        if allow_fallback and response.status_code in (500, 502, 503, 504) and model != fallback:
+            return await _fallback(model, fallback, key, body, f"capacity_{response.status_code}")
+
         raise GeminiError(f"Gemini returned {response.status_code}: {detail}")
 
     payload = response.json()

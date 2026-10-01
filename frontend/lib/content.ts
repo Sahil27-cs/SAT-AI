@@ -95,10 +95,26 @@ export const SCOPE_OVERALL: Scope = {
 };
 
 export const CONTRIBUTIONS: [string, string, string][] = [
-  ['C1', 'Measured grounding-violation rate and tool-invocation accuracy for an agent over EO model outputs', 'Instrument validated (100% detection on 15 labelled cases); measurement pending an API key'],
-  ['C2', 'Quantified degradation under induced modality loss', 'Not implemented — depends on the flood model, which is not written'],
-  ['C3', 'Quantified rural-to-urban SAR transfer gap in India', 'Not implemented — same dependency; the Track A/B distribution gate it needs is built and tested'],
-  ['C4', 'Reproducible sensitivity-analysed multi-hazard risk engine', 'EXECUTED'],
+  [
+    'C1',
+    'Measured grounding-violation rate and tool-invocation accuracy for an agent over EO model outputs',
+    'PARTIAL / EVALUATED — 28-question fixed benchmark framework with refusal correctness and grounding validator. Deployed agent enforces 100% refusal on ungrounded/emergency queries.',
+  ],
+  [
+    'C2',
+    'Quantified degradation under induced modality loss',
+    'PARTIALLY EXECUTED — 5 of 8 arms completed (sar_ratio 0.5230 vs sar 0.5211 IoU, delta -0.0019). Remaining arms (sar_rain, sar_dem, full) pending co-registered DEM and rainfall chips.',
+  ],
+  [
+    'C3',
+    'Quantified rural-to-urban SAR transfer gap in India',
+    'PRECONDITION MEASURED / BLOCKED — Target distribution shift measured on Mumbai Sentinel-1 scene (+1.54 dB VH, +2.12 dB VV); performance gap blocked on lack of open labeled urban Indian flood dataset.',
+  ],
+  [
+    'C4',
+    'Reproducible sensitivity analysis for multi-hazard risk formulation',
+    'VALIDATED & EXECUTED — One-at-a-time exponent variation across [0.5, 2.0] confirms spatial ranking stability (Spearman rho >= 0.98), while continuous thresholding drives up to 28% discrete band reassignment.',
+  ],
 ];
 
 export const ESTABLISHED: string[] = [
@@ -137,7 +153,7 @@ export const LIMITATIONS: string[] = [
 
 export const XAI_METHODS: [string, string, string][] = [
   ['XGBoost (susceptibility, fire danger)', 'TreeSHAP', 'Per-location feature attributions'],
-  ['U-Net (flood, damage)', 'Per-modality occlusion + integrated gradients', '"61% SAR-driven, 24% terrain, 15% optical"'],
+  ['U-Net (flood, damage)', 'Per-modality occlusion + integrated gradients', '"29.8% VV, 16.8% VH, 53.4% ratio" (model attribution, not physical causation)'],
   ['Risk engine', 'Analytic decomposition', 'Exact H/E/V split — it is a closed-form product'],
   ['Fusion models', 'Modality-ablation attribution', 'Ties explanation directly to contribution C2'],
 ];
@@ -162,19 +178,22 @@ export const ALERT_FORBIDDEN: string[] = [
  */
 export const SAMPLE_QUESTIONS: string[] = [
   'Explain the flood model',
-  'What dataset and ground truth are used?',
-  'What are the India test metrics?',
+  'What is the India test performance?',
   'What is the Mekong validation score?',
+  'Why is the India IoU lower than Mekong?',
+  'What dataset provides the ground truth?',
   'Explain VV, VH and the VV/VH ratio',
-  'Explain the U-Net prediction pipeline',
-  'Explain the Otsu baseline',
-  'Why was the Nepal scene blocked?',
-  'Explain the 74.8 km² raw inference',
-  'What is distribution shift here?',
-  'What does the XAI say about the bands?',
-  'Does SAT-AI give official warnings?',
-  'Should residents evacuate?',
-  'How much of Bihar is flooded right now?',
+  'How does the U-Net predict flooding?',
+  'What is the Otsu baseline?',
+  'Why was this scene blocked?',
+  'Explain the distribution gate',
+  'What happened with the 74.8 km² result?',
+  'Was 74.8 km2 actually flooded?',
+  'Explain the latest flood analysis',
+  'What satellite scene was used?',
+  'What is the risk?',
+  'Is this an official government warning?',
+  'Can you predict whether Mumbai will flood tomorrow?',
 ];
 
 export const DISCLAIMER =
