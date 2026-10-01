@@ -34,11 +34,43 @@ COMPARISON = "ml/experiments/flood_comparison.json"
 OTSU_REPORT = "ml/experiments/flood_baseline/sweep_0.66/otsu_baseline.json"
 GATE_MODULE = "satai/ml/distribution_gate.py"
 INFER_MODULE = "ml/flood/infer_scene.py"
+RISK_CONFIG = "configs/risk.yaml"
+SENSITIVITY_GLOB = "ml/experiments/risk_sensitivity/sensitivity_rho*.json"
 
 
 def _load(relative: str) -> dict[str, Any]:
     data: dict[str, Any] = json.loads((REPO_ROOT / relative).read_text(encoding="utf-8"))
     return data
+
+
+def _risk() -> dict[str, Any]:
+    """Default exponents and the C4 sensitivity extremes, from their sources.
+
+    The extremes are taken over every correlation setting that was run, so the
+    figure quoted is the worst case the experiment found, not a favourable one.
+    """
+    import yaml
+
+    config = yaml.safe_load((REPO_ROOT / RISK_CONFIG).read_text(encoding="utf-8"))
+    exponents = {k: float(v) for k, v in config["formulation"]["exponents"].items()}
+    reports = sorted(REPO_ROOT.glob(SENSITIVITY_GLOB))
+    summaries = [json.loads(p.read_text(encoding="utf-8"))["summary"] for p in reports]
+    grid = config["sensitivity_analysis"]["parameters"]["alpha"]
+    return {
+        "formulation": "R = H^alpha * E^beta * V^gamma (ADR-008)",
+        "default_exponents": exponents,
+        "c4_sensitivity": {
+            "exponent_grid": grid,
+            "n_settings": len(reports),
+            "min_spearman_rank_correlation": round(
+                min(s["min_rank_correlation"] for s in summaries), 3
+            ),
+            "max_band_reassignment_percent": round(
+                100 * max(s["max_band_reassignment"] for s in summaries), 1
+            ),
+        },
+        "source": [RISK_CONFIG, SENSITIVITY_GLOB],
+    }
 
 
 def build() -> dict[str, Any]:
@@ -174,6 +206,7 @@ def build() -> dict[str, Any]:
             "p_value_used": False,
             "source": GATE_MODULE,
         },
+        "risk": _risk(),
         "pipeline": {
             "steps": [
                 "Find a Sentinel-1 acquisition over the study area in the Planetary "

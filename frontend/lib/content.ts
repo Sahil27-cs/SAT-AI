@@ -113,7 +113,7 @@ export const CONTRIBUTIONS: [string, string, string][] = [
   [
     'C4',
     'Reproducible sensitivity analysis for multi-hazard risk formulation',
-    'VALIDATED & EXECUTED — One-at-a-time exponent variation across [0.5, 2.0] confirms spatial ranking stability (Spearman rho >= 0.98), while continuous thresholding drives up to 28% discrete band reassignment.',
+    'VALIDATED & EXECUTED — One-at-a-time exponent variation across [0.5, 2.0] keeps spatial ranking stable (worst-case Spearman rho 0.957 across 5 correlation settings), while up to 18.7% of cells change colour band. A ranking may be reported with confidence; the band of a single cell may not.',
   ],
 ];
 

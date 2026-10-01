@@ -551,6 +551,114 @@ OVERREACHED = (
 )
 
 
+def _by_tool(results: list[dict[str, Any]], *names: str) -> dict[str, Any] | None:
+    """The first available result from any of the named tools."""
+    return next((r for r in results if r.get("_tool") in names and r.get("available")), None)
+
+
+def _synthesis(results: list[dict[str, Any]]) -> list[str]:
+    """A readable summary of this turn's tool results, built only from their values.
+
+    This text is shown without the grounding check, because it is not model
+    output. That is exactly why it may not contain a typed number: every figure
+    below is read from a tool result, so it is the same figure the tool returned
+    and the same one the reports hold. An earlier version typed them in and got
+    five wrong.
+    """
+    out: list[str] = []
+
+    model = _by_tool(results, "get_flood_model_info")
+    if model:
+        out.append(
+            f"- **Model:** {model.get('architecture')}, "
+            f"{model.get('parameters_millions')}M parameters, inputs "
+            f"{', '.join(model.get('bands') or [])}; loss {model.get('loss_description')}; "
+            f"{model.get('decision_rule')}."
+        )
+
+    truth = _by_tool(results, "get_flood_ground_truth", "get_ground_truth_info")
+    if truth:
+        dataset, split = truth["dataset"], truth["dataset"]["split"]
+        out.append(
+            f"- **Ground truth:** {truth['ground_truth']['name']} from {dataset['name']}: "
+            f"{dataset['n_chips']} chips from {dataset['n_events']} flood events. Held-out "
+            f"test region {', '.join(split['test_region'])} ({split['test_chips']} chips); "
+            f"validation region {', '.join(split['validation_region'])} "
+            f"({split['validation_chips']} chips)."
+        )
+
+    metrics = _by_tool(results, "get_flood_metrics")
+    if metrics:
+        for name, split in metrics["splits"].items():
+            figures = ", ".join(
+                f"{k.upper() if k == 'f1' else k.capitalize() if k != 'iou' else 'IoU'} {split[k]}"
+                for k in ("iou", "f1", "precision", "recall")
+                if k in split
+            )
+            out.append(f"- **{split['label']}** ({name}): {figures}.")
+
+    gate = _by_tool(results, "get_distribution_gate")
+    for verdict in (gate or {}).get("scene_verdicts") or []:
+        bands = "; ".join(
+            f"{b['band']} {b['verdict']} (Wasserstein {b['wasserstein_db']} dB)"
+            for b in verdict["bands"]
+        )
+        out.append(
+            f"- **Distribution gate, {verdict['region']}:** {verdict['verdict'].upper()}. "
+            f"Trained on {verdict['training_radiometry']}; scene is "
+            f"{verdict['scene_radiometry']}. Per band: {bands}."
+        )
+
+    summary = _by_tool(results, "get_flood_inference_summary")
+    for item in (summary or {}).get("results") or []:
+        if item.get("method") == "flood_unet":
+            out.append(
+                f"- **U-Net raw extent, {item['region']}:** {item.get('raw_extent_km2')} km² "
+                f"— status {item.get('status')}, unvalidated, NOT confirmed flooding, "
+                f"not drawn on the map."
+            )
+        else:
+            out.append(
+                f"- **{item.get('method')} extent, {item['region']}:** "
+                f"{item.get('flood_extent_km2')} km² of {item.get('observed_area_km2')} km² "
+                f"observed; no ground truth on this scene."
+            )
+
+    xai = _by_tool(results, "get_flood_xai", "get_xai_summary")
+    if xai:
+        shares = ", ".join(
+            f"{band} {share}%" for band, share in xai["attribution_share_percent"].items()
+        )
+        out.append(
+            f"- **Attribution ({' + '.join(xai['methods'])}, {xai['n_chips']} "
+            f"{xai.get('region')} chips):** {shares}. Model attribution, not physical causation."
+        )
+
+    risk = _by_tool(results, "get_risk_summary")
+    if risk:
+        c4 = risk["c4_sensitivity"]
+        out.append(
+            f"- **Risk:** {risk['formulation']}. C4 sensitivity over {c4['n_settings']} "
+            f"settings: rank correlation at least {c4['min_spearman_rank_correlation']}, "
+            f"up to {c4['max_band_reassignment_percent']}% of cells change band. "
+            f"{risk['regional_status']}"
+        )
+
+    status = _by_tool(results, "get_flood_scene_status")
+    for scene in (status or {}).get("scenes") or []:
+        out.append(
+            f"- **Scene {scene['region']} ({scene['method']}):** {scene['status']}"
+            + (f" — {scene['blocked_reason']}" if scene.get("blocked_reason") else "")
+        )
+
+    if out:
+        out.append(
+            "- **Not an official warning.** Official sources: IMD, CWC, NDMA and State "
+            "SDMAs (India); Department of Hydrology and Meteorology (Nepal)."
+        )
+    return out
+
+
 def _degraded_answer(
     query: str,
     results: list[dict[str, Any]],
@@ -559,76 +667,45 @@ def _degraded_answer(
     reason: str = UNAVAILABLE,
 ) -> str:
     """Structured tool output with grounded scientific synthesis."""
-    tool_names = {r.get("_tool") for r in results}
-    synthesis: list[str] = []
+    lines: list[str] = [reason, ""]
 
-    # Provide clear, grounded synthesis when verified tools responded
-    if "get_flood_model_info" in tool_names or "get_ground_truth_info" in tool_names:
-        synthesis.append(
-            "SAT-AI uses a standard U-Net architecture (~7.76M parameters) for flood water extent "
-            "segmentation from Sentinel-1 SAR imagery (VV, VH, and computed VV/VH ratio at 10m "
-            "spatial resolution). Ground truth is provided by the Sen1Floods11 v1.1 Hand-Labeled "
-            "dataset (4,831 patches of 512x512 pixels across 11 global flood events including "
-            "Cambodia, Mekong, USA, and India)."
-        )
-    elif "get_flood_metrics" in tool_names:
-        synthesis.append(
-            "On held-out validation on the Sen1Floods11 Mekong split, the flood segmentation model "
-            "achieves a validation IoU of 0.8679 (86.79%). On the India held-out test split, "
-            "the model achieves a test IoU of 0.5230 (52.30%), illustrating the domain shift "
-            "between global training data and regional Indian alluvial floodplains."
-        )
-    elif "get_distribution_gate" in tool_names or any("74.8" in str(r) for r in results):
-        synthesis.append(
-            "In Nepal Koshi Terai, an initial uncalibrated model inference produced a raw extent "
-            "of 74.8 km². However, this result was REJECTED by SAT-AI's Track A / Track B "
-            "distribution gate because the SAR backscatter distribution deviated from "
-            "calibrated flood thresholds. Consequently, this extent is not displayed as "
-            "confirmed inundation."
-        )
-    elif "get_xai_summary" in tool_names:
-        synthesis.append(
-            "Integrated Gradients attribution across input SAR channels reveals: VV polarization "
-            "accounts for 29.8%, VH polarization accounts for 16.8%, and the VV/VH ratio "
-            "accounts for 53.4% of total feature attribution. These values reflect neural "
-            "network model feature importance, not physical causation."
-        )
-    elif "get_risk_summary" in tool_names or "get_flood_scene_status" in tool_names:
-        region = next((r.get("region") for r in results if r.get("region")), "the requested region")
-        synthesis.append(
-            f"For {region}: no verified completed regional flood model run is currently available "
-            "in the catalogue. This region currently has unobserved/pending regional processing. "
-            "SAT-AI does not fabricate live flood risk values without an active satellite overpass "
-            "and verified ground truth."
-        )
-
-    if reason in {UNGROUNDED, OVERREACHED}:
-        lines = [reason, ""]
-    elif synthesis:
-        lines = list(synthesis)
-        lines.append("")
-        lines.append(f"[Verified Data - {reason}]")
-    else:
-        lines = [reason, ""]
-
-    if not synthesis and not results:
+    if not results:
         configured = ", ".join(region_ids or FALLBACK_REGIONS)
         lines.append(
             f"No SAT-AI tool was called for this question. Configured study areas: {configured}."
         )
         return "\n".join(lines)
+
+    synthesis = _synthesis(results)
+
+    if synthesis:
+        lines.append("### Scientific Assessment & Key Findings")
+        lines.extend(synthesis)
+        lines.append("")
+
+    lines.append("### Verified Tool Telemetry")
     for result in results:
-        lines.append(f"[{result.get('_tool', 'tool')}]")
+        tool_name = result.get("_tool", "tool")
+        lines.append(f"#### Tool: `{tool_name}`")
         if not result.get("available"):
-            lines += [f"  {result.get('reason') or result.get('message', 'unavailable')}", ""]
+            reason_msg = result.get("reason") or result.get("message", "unavailable")
+            lines.append(f"- **Status:** Unavailable — {reason_msg}")
+            lines.append("")
             continue
         for key, value in result.items():
             if key.startswith("_") or key in {"available", "caveats", "source_kind", "map_action"}:
                 continue
-            lines.append(f"  {key}: {value}")
+            if isinstance(value, dict):
+                lines.append(f"- **{key}:**")
+                for sub_k, sub_v in value.items():
+                    lines.append(f"  - `{sub_k}`: {sub_v}")
+            elif isinstance(value, list):
+                lines.append(f"- **{key}:** {', '.join(str(v) for v in value)}")
+            else:
+                lines.append(f"- **{key}:** {value}")
         if result.get("caveats"):
-            lines.append("  caveats:")
-            lines += [f"    - {c}" for c in result["caveats"]]
+            lines.append("- **Caveats:**")
+            lines += [f"  - {c}" for c in result["caveats"]]
         lines.append("")
     return "\n".join(lines)
 
@@ -925,7 +1002,7 @@ def _degraded(
     from index import ChatResponse, Provenance
 
     if not results:
-        results, called = _execute_degraded_tools(request)
+        results, _ = _execute_degraded_tools(request)
 
     answer_text = _degraded_answer(request.message, results, region_ids)
 

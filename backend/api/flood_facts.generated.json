@@ -142,6 +142,30 @@
     "p_value_used": false,
     "source": "satai/ml/distribution_gate.py"
   },
+  "risk": {
+    "formulation": "R = H^alpha * E^beta * V^gamma (ADR-008)",
+    "default_exponents": {
+      "alpha": 1.0,
+      "beta": 1.0,
+      "gamma": 1.0
+    },
+    "c4_sensitivity": {
+      "exponent_grid": [
+        0.5,
+        0.75,
+        1.0,
+        1.5,
+        2.0
+      ],
+      "n_settings": 5,
+      "min_spearman_rank_correlation": 0.957,
+      "max_band_reassignment_percent": 18.7
+    },
+    "source": [
+      "configs/risk.yaml",
+      "ml/experiments/risk_sensitivity/sensitivity_rho*.json"
+    ]
+  },
   "pipeline": {
     "steps": [
       "Find a Sentinel-1 acquisition over the study area in the Planetary Computer catalogue.",

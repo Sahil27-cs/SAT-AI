@@ -614,46 +614,51 @@ def _risk_summary(region: str | None, hazard: str = "flood") -> dict[str, Any]:
         return _unavailable(
             f"{region!r} is not a SAT-AI study area. Known: {', '.join(map(str, known))}."
         )
+    risk = _facts_section("risk")
+    if risk is None:
+        return _unavailable("Risk formulation facts have not been exported to this deployment.")
+    risk.pop("source", None)
 
-    regional_note = (
-        f"For {region}, regional risk assessment requires validated hazard extent and "
-        f"validated exposure/vulnerability data. When hazard inference is withheld by the "
-        f"distribution gate (e.g. Nepal Koshi scene) or fine-scale vulnerability data is "
-        f"unobserved, no regional risk map is fabricated."
-        if region
-        else (
-            "Regional risk requires validated hazard, exposure, "
-            "and vulnerability inputs per study area."
-        )
-    )
-
+    # Read from the catalogue rather than asserted: the Nepal scene has a
+    # displayable risk analysis built on the Otsu extent, while the U-Net run
+    # on the same scene is blocked. Saying "no map" for every region was wrong.
+    maps = [
+        {
+            "region": area["id"],
+            "headline": analysis.get("headline"),
+            "hazard_source": "Otsu baseline flood extent",
+            "vulnerability_included": False,
+        }
+        for area in areas
+        for analysis in area.get("analyses") or []
+        if analysis.get("kind") == "risk_analysis"
+        and analysis.get("hazard") == hazard
+        and analysis.get("displayable") is True
+    ]
     return {
         "available": True,
         "source_kind": "derived",
         "hazard": hazard,
-        "formulation": "R_h = H_h^alpha * E^beta * V^gamma (multiplicative; ADR-008)",
+        **risk,
         "boundary_condition": "E = 0 implies R = 0 (an uninhabited floodplain has zero risk)",
-        "default_exponents": {"alpha": 1.0, "beta": 1.0, "gamma": 1.0},
         "non_averaging_principle": (
             "Per-hazard scores are outputs of different models with different base rates "
-            "and are never averaged across hazards "
-            "(mean of incommensurable scores denotes nothing)."
+            "and are never averaged across hazards."
         ),
-        "sensitivity_analysis_c4": {
-            "parameter_grid": [0.5, 0.75, 1.0, 1.5, 2.0],
-            "spearman_rank_correlation_min": 0.98,
-            "band_reassignment_fraction_max": 0.28,
-            "finding": (
-                "Spatial ranking is highly stable (rho >= 0.98), but discrete band reassignment "
-                "reaches up to 28% because continuous risk is sliced by threshold boundaries."
-            ),
-        },
-        "regional_status": regional_note,
-        "has_validated_regional_map": False,
+        "risk_maps": maps,
+        "has_risk_map": bool(maps),
+        "regional_status": (
+            "A risk analysis exists for this area; see risk_maps."
+            if maps
+            else "No risk analysis has been run for this area, and none is estimated."
+        ),
         "caveats": [
             "SAT-AI prototype research risk level. This is NOT an official warning.",
             "Official flood warnings in India come from IMD, CWC, NDMA, and State SDMAs.",
-            "Vulnerability is a proxy index and does not represent socioeconomic inequality.",
+            "Risk is relative within a study area, and vulnerability is excluded "
+            "where no vulnerability layer exists rather than imputed.",
+            "C4: a ranking of places may be reported with confidence; an individual "
+            "cell's colour band may not.",
         ],
     }
 

@@ -541,12 +541,25 @@ def test_get_xai_summary_returns_grounded_attributions() -> None:
 def test_get_risk_summary_returns_formulation_and_c4_sensitivity() -> None:
     risk = run("get_risk_summary", region="nepal_koshi_terai")
     assert risk["available"] is True
-    assert "H_h^alpha * E^beta * V^gamma" in risk["formulation"]
+    assert "H^alpha * E^beta * V^gamma" in risk["formulation"]
     assert risk["default_exponents"] == {"alpha": 1.0, "beta": 1.0, "gamma": 1.0}
     assert "E = 0 implies R = 0" in risk["boundary_condition"]
-    assert risk["sensitivity_analysis_c4"]["spearman_rank_correlation_min"] >= 0.98
-    assert risk["has_validated_regional_map"] is False
-    assert "requires validated hazard extent" in risk["regional_status"]
+    # The worst case over all five correlation settings, from the reports. An
+    # earlier version of the tool asserted 0.98 and 28%, which no report holds.
+    c4 = risk["c4_sensitivity"]
+    assert c4["min_spearman_rank_correlation"] == 0.957
+    assert c4["max_band_reassignment_percent"] == 18.7
+    assert c4["n_settings"] == 5
+    # Nepal has a displayable risk analysis built on the Otsu extent.
+    assert risk["has_risk_map"] is True
+    assert risk["risk_maps"][0]["vulnerability_included"] is False
+
+
+def test_get_risk_summary_says_none_where_none_was_run() -> None:
+    risk = run("get_risk_summary", region="bihar_ganga")
+    assert risk["has_risk_map"] is False
+    assert risk["risk_maps"] == []
+    assert "none is estimated" in risk["regional_status"]
 
 
 def test_get_provenance_returns_complete_scene_and_model_trace() -> None:
@@ -595,3 +608,40 @@ def test_chatbot_answers_74_8_km2_case_honestly(monkeypatch: pytest.MonkeyPatch)
         "not confirmed flooding" in response.answer
         or "not displayed as confirmed flooding" in response.answer
     )
+
+
+# --- the degraded answer ----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "tool_calls",
+    [
+        [("get_flood_model_info", {}), ("get_flood_ground_truth", {})],
+        [("get_flood_metrics", {"split": "all"})],
+        [
+            ("get_distribution_gate", {"region": "nepal_koshi_terai"}),
+            ("get_flood_inference_summary", {"region": "nepal_koshi_terai"}),
+        ],
+        [("get_flood_xai", {})],
+        [("get_risk_summary", {"region": "nepal_koshi_terai"})],
+    ],
+)
+def test_the_degraded_summary_states_only_tool_values(
+    tool_calls: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """The fallback text skips the model, so it must not carry a number of its own.
+
+    An earlier version typed its summary by hand and stated 4,831 patches, 288
+    India chips, Otsu IoU 0.4357, rho >= 0.98 and 28 %: none of them true.
+    """
+    results = []
+    for name, arguments in tool_calls:
+        result = run(name, **arguments)
+        result["_tool"] = name
+        results.append(result)
+    summary = "\n".join(agents._synthesis(results))
+    assert summary
+    grounded, ungrounded = agents.validate_grounding(summary, tools.groundable_values(results))
+    assert grounded, ungrounded
+    for wrong in ("4,831", "288", "0.4357", "0.98", "28%", "202008"):
+        assert wrong not in summary
