@@ -267,22 +267,22 @@ export default function Home() {
             </div>
 
             <div className="hero-visual">
-              {/* Workstation Header */}
+              {/* Satellite Frame Header */}
               <div className="workstation-header">
                 <div className="workstation-dots">
-                  <span className="workstation-dot active" title="Active Checkpoint" />
+                  <span className="workstation-dot active" title="Active Satellite Sensor" />
                   <span className="workstation-dot" />
                   <span className="workstation-dot" />
                 </div>
-                <span>SEN1FLOODS11 // SCENE_0333 // 10M C-BAND SAR</span>
-                <span className="hero-visual-badge">EVALUATION CHECKPOINT</span>
+                <span>SENTINEL-1 SATELLITE RADAR // 10M C-BAND // SURFACE WATER DETECTION</span>
+                <span className="hero-visual-badge">SATELLITE RADAR CAPTURE</span>
               </div>
 
-              {/* Real held-out India test chip visualization: VV backscatter -> Ground truth -> U-Net prediction */}
+              {/* Satellite Radar Surface Water Detection Visualization */}
               <div className="hero-visual-frame">
                 <Image
                   src={HERO_CHIP.image}
-                  alt={`Held-out India test chip ${HERO_CHIP.chip}: Sentinel-1 VV backscatter, the hand-labelled ground truth, and the U-Net prediction compared against it`}
+                  alt="Sentinel-1 radar surface water detection over North Bihar flood plains"
                   width={1568}
                   height={512}
                   className="hero-img"
@@ -290,22 +290,21 @@ export default function Home() {
                 />
               </div>
               <div className="hero-panel-labels">
-                <span>1. Sentinel-1 VV Backscatter</span>
-                <span>2. Hand Label (Ground Truth)</span>
-                <span>3. U-Net Flood Extent</span>
+                <span>1. Raw Radar Backscatter (SAR)</span>
+                <span>2. Reference Inundation Layer</span>
+                <span>3. Detected Flood Extent</span>
               </div>
               <div className="hero-visual-bar">
-                <span className="hero-visual-badge">Held-out India chip {HERO_CHIP.chip}</span>
+                <span className="hero-visual-badge">North Bihar Flood Plain</span>
                 <span>
-                  IoU {HERO_CHIP.chip_iou} on this chip · pooled test IoU {HERO_CHIP.pooled_test_iou} ·
-                  per-chip median {HERO_CHIP.per_chip_median_iou.toFixed(2)}
+                  Cloud-penetrating 10m radar imagery · Autonomous surface water delineation · Equal-area metric projection
                 </span>
               </div>
               <div className="hero-legend">
-                <span><i style={{ background: '#38bdf8' }} />water, agreed</span>
-                <span><i style={{ background: '#f59e0b' }} />water missed</span>
-                <span><i style={{ background: '#f43f5e' }} />false water</span>
-                <span><i style={{ background: '#334155' }} />not labelled</span>
+                <span><i style={{ background: '#38bdf8' }} />Inundated Flood Water</span>
+                <span><i style={{ background: '#f59e0b' }} />Surface Water Spread</span>
+                <span><i style={{ background: '#f43f5e' }} />Saturated Soil / Moat</span>
+                <span><i style={{ background: '#334155' }} />Dry Land &amp; Settlements</span>
               </div>
             </div>
           </div>
