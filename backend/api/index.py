@@ -88,14 +88,9 @@ if not os.environ.get("SUPABASE_URL"):
     )
 
 # CORS. Allow localhost and the production frontend by default.
-DEFAULT_ORIGINS = (
-    "http://localhost:3000,http://127.0.0.1:3000,"
-    "https://sat-ai-murex.vercel.app"
-)
+DEFAULT_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,https://sat-ai-murex.vercel.app"
 ALLOWED_ORIGINS = [
-    o.strip()
-    for o in os.environ.get("CORS_ALLOW_ORIGINS", DEFAULT_ORIGINS).split(",")
-    if o.strip()
+    o.strip() for o in os.environ.get("CORS_ALLOW_ORIGINS", DEFAULT_ORIGINS).split(",") if o.strip()
 ]
 
 #: Per-instance request budget for the chat endpoint. See ``_rate_limit``.
