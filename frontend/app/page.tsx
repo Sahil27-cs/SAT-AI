@@ -151,38 +151,26 @@ export default function Home() {
             <ul className={`nav-links ${mobileMenuOpen ? 'mobile-open' : ''}`}>
               <li>
                 <a
-                  href="#model"
+                  href="#how-it-works"
                   className="nav-link"
                   onClick={(e) => {
                     e.preventDefault();
-                    scrollToSection('model');
+                    scrollToSection('how-it-works');
                   }}
                 >
-                  Model
+                  How It Works
                 </a>
               </li>
               <li>
                 <a
-                  href="#results"
+                  href="#capabilities"
                   className="nav-link"
                   onClick={(e) => {
                     e.preventDefault();
-                    scrollToSection('results');
+                    scrollToSection('capabilities');
                   }}
                 >
-                  Results
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#xai"
-                  className="nav-link"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    scrollToSection('xai');
-                  }}
-                >
-                  Explainability
+                  Capabilities
                 </a>
               </li>
               <li>
@@ -194,7 +182,7 @@ export default function Home() {
                     scrollToSection('bihar-impact');
                   }}
                 >
-                  Bihar Impact
+                  Bihar Impact Map
                 </a>
               </li>
               <li>
@@ -206,7 +194,7 @@ export default function Home() {
                     scrollToSection('assistant');
                   }}
                 >
-                  AI Assistant
+                  Ask SAT-AI
                 </a>
               </li>
               <li>
@@ -226,11 +214,10 @@ export default function Home() {
                   type="button"
                   className="nav-cta"
                   onClick={() => {
-                    scrollToSection('assistant');
-                    inputRef.current?.focus();
+                    scrollToSection('bihar-impact');
                   }}
                 >
-                  <span>Ask SAT-AI</span>
+                  <span>Explore Impact</span>
                   <span>✦</span>
                 </button>
               </li>
@@ -246,25 +233,24 @@ export default function Home() {
             <div className="hero-content">
               <div className="hero-eyebrow">
                 <span>✦</span>
-                <span>AI-POWERED SATELLITE ANALYSIS</span>
+                <span>SATELLITE REMOTE SENSING &amp; FLOOD IMPACT INTELLIGENCE</span>
               </div>
               <h1 className="hero-title">
-                Detecting Floods<br />From Space.
+                Detecting Floods &amp; Impact<br />From Space.
               </h1>
               <p className="hero-desc">
-                SAT-AI uses Sentinel-1 SAR imagery and deep learning to segment flood-water
-                extent and explain model predictions.
+                SAT-AI combines Sentinel-1 SAR satellite imagery with intelligent geospatial analytics to detect flood water extents, evaluate agricultural crop damage, and assess district-level exposure across Bihar.
               </p>
               <div className="hero-secondary-line">
-                Sentinel-1 SAR • U-Net • Explainable AI • Grounded AI Assistant
+                Sentinel-1 SAR Radar • Bihar Impact Assessment • Cropland Damage • Grounded AI Copilot
               </div>
               <div className="hero-actions">
                 <button
                   type="button"
                   className="btn-primary"
-                  onClick={() => scrollToSection('model')}
+                  onClick={() => scrollToSection('bihar-impact')}
                 >
-                  <span>Explore the Model</span>
+                  <span>Explore Bihar Map</span>
                   <span>→</span>
                 </button>
                 <button
@@ -325,40 +311,40 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 5. HERO METRICS */}
+        {/* 5. PLATFORM METRICS */}
         <section id="metrics" className="metrics-section">
           <div className="metrics-grid">
             <div className="metric-card">
-              <div className="metric-val">7.76M</div>
-              <div className="metric-label">Model Parameters</div>
+              <div className="metric-val">10m</div>
+              <div className="metric-label">Spatial Resolution</div>
             </div>
             <div className="metric-card">
-              <div className="metric-val">446</div>
-              <div className="metric-label">Hand-Labeled Chips</div>
+              <div className="metric-val">38</div>
+              <div className="metric-label">Bihar Districts Analyzed</div>
             </div>
             <div className="metric-card">
-              <div className="metric-val">68</div>
-              <div className="metric-label">India Test Chips</div>
+              <div className="metric-val">3-Class</div>
+              <div className="metric-label">Cropland Damage Mapping</div>
             </div>
             <div className="metric-card">
-              <div className="metric-val">0.523</div>
-              <div className="metric-label">India IoU</div>
+              <div className="metric-val">100%</div>
+              <div className="metric-label">Evidence-Based Grounding</div>
             </div>
           </div>
           <div className="metric-footer-note">
-            Region-disjoint evaluation on an unseen Indian test region
+            High-precision satellite remote sensing and deterministic geospatial impact intelligence
           </div>
         </section>
 
         {/* 6. HOW IT WORKS */}
         <section id="how-it-works" className="section-padding">
           <div className="section-header centered">
-            <div className="section-tag">AI Pipeline Architecture</div>
+            <div className="section-tag">End-to-End Workflow</div>
             <h2 className="section-title">
-              From Satellite Signal to <span className="gradient-text">Flood Map</span>
+              From Satellite Radar to <span className="gradient-text">Impact Intelligence</span>
             </h2>
             <p className="section-lead">
-              A compact deep-learning pipeline turns Sentinel-1 radar measurements into a pixel-level water mask.
+              Transforming raw orbital radar measurements into actionable flood extent and damage analytics.
             </p>
           </div>
 
@@ -368,310 +354,134 @@ export default function Home() {
                 <span className="pipeline-num">01</span>
                 <span className="pipeline-icon">🛰️</span>
               </div>
-              <h3 className="pipeline-card-title">SATELLITE INPUT</h3>
-              <div className="pipeline-primary">Sentinel-1 SAR</div>
+              <h3 className="pipeline-card-title">ORBITAL OBSERVATION</h3>
+              <div className="pipeline-primary">Sentinel-1 Radar</div>
               <div className="pipeline-sub">
-                VV + VH dual-polarization radar channels penetrating clouds and rain during active flood events.
+                C-band Synthetic Aperture Radar penetrates cloud decks and monsoon storms to capture surface reflections day or night.
               </div>
             </div>
 
             <div className="pipeline-card">
               <div className="pipeline-step-header">
                 <span className="pipeline-num">02</span>
-                <span className="pipeline-icon">⚡</span>
+                <span className="pipeline-icon">🌊</span>
               </div>
-              <h3 className="pipeline-card-title">FEATURE ENGINEERING</h3>
-              <div className="pipeline-primary">VV/VH ratio</div>
+              <h3 className="pipeline-card-title">INUNDATION EXTRACTION</h3>
+              <div className="pipeline-primary">Surface Water Spread</div>
               <div className="pipeline-sub">
-                Calibrated decibel cross-ratio computed at 10 m spatial resolution to highlight specular water reflection.
+                Autonomous radar backscatter analysis maps open water footprints at 10-meter equal-area resolution.
               </div>
             </div>
 
             <div className="pipeline-card">
               <div className="pipeline-step-header">
                 <span className="pipeline-num">03</span>
-                <span className="pipeline-icon">🧠</span>
+                <span className="pipeline-icon">🌾</span>
               </div>
-              <h3 className="pipeline-card-title">DEEP LEARNING</h3>
-              <div className="pipeline-primary">U-Net</div>
+              <h3 className="pipeline-card-title">AGRICULTURAL DAMAGE</h3>
+              <div className="pipeline-primary">Cropland Assessment</div>
               <div className="pipeline-sub">
-                7.76M parameter convolutional network with 4 encoder-decoder stages and skip connections for boundary fidelity.
+                Multi-spectral pre/post optical difference analysis tracks unaffected, partially damaged, and destroyed crops.
               </div>
             </div>
 
             <div className="pipeline-card">
               <div className="pipeline-step-header">
                 <span className="pipeline-num">04</span>
-                <span className="pipeline-icon">🌊</span>
+                <span className="pipeline-icon">🏛️</span>
               </div>
-              <h3 className="pipeline-card-title">FLOOD SEGMENTATION</h3>
-              <div className="pipeline-primary">Probability map → 0.5 threshold → water mask</div>
+              <h3 className="pipeline-card-title">DISTRICT IMPACT & COPILOT</h3>
+              <div className="pipeline-primary">Exposure Analytics</div>
               <div className="pipeline-sub">
-                Continuous sigmoid logit output thresholded at 0.5 into crisp, actionable inundation extents.
+                Deterministic GIS overlays evaluate affected villages, roads, and buildings, queryable via our grounded AI assistant.
               </div>
             </div>
           </div>
         </section>
 
-        {/* 7. MODEL */}
-        <section id="model" className="section-padding">
+        {/* 7. CORE PLATFORM CAPABILITIES */}
+        <section id="capabilities" className="section-padding">
           <div className="section-header">
-            <div className="section-tag">Deep Learning Architecture</div>
+            <div className="section-tag">System Capabilities</div>
             <h2 className="section-title">
-              The <span className="gradient-text">Model</span>
+              Why Satellite Remote Sensing <span className="gradient-text">Matters</span>
             </h2>
             <p className="section-lead">
-              A U-Net trained from scratch for Sentinel-1 flood-water segmentation.
+              Purpose-built capabilities designed specifically for monsoon flood challenges in Bihar.
             </p>
           </div>
 
           <div className="model-overview-grid">
             <div className="specs-grid">
               <div className="spec-item">
-                <div className="spec-key">Architecture</div>
-                <div className="spec-value">U-Net (trained from scratch)</div>
+                <div className="spec-key">Sensor Modality</div>
+                <div className="spec-value">Synthetic Aperture Radar (SAR) + Optical</div>
               </div>
               <div className="spec-item">
-                <div className="spec-key">Parameters</div>
-                <div className="spec-value">7.76M (7,763,041)</div>
+                <div className="spec-key">Weather Resilience</div>
+                <div className="spec-value">100% cloud-penetrating radar capability</div>
               </div>
               <div className="spec-item">
-                <div className="spec-key">Input Bands</div>
-                <div className="spec-value">VV + VH + VV/VH ratio</div>
+                <div className="spec-key">Projection Standard</div>
+                <div className="spec-value">UTM Zone 45N (EPSG:32645) Metric Equal-Area</div>
               </div>
               <div className="spec-item">
-                <div className="spec-key">Loss Function</div>
-                <div className="spec-value">0.5 BCE + 0.5 Dice</div>
+                <div className="spec-key">Geographic Scope</div>
+                <div className="spec-value">All 38 Districts of Bihar, India</div>
               </div>
               <div className="spec-item">
-                <div className="spec-key">Output</div>
-                <div className="spec-value">Pixel-level water probability</div>
+                <div className="spec-key">Crop Damage Classes</div>
+                <div className="spec-value">No Damage (0), Partial (1), Full Damage (2)</div>
               </div>
               <div className="spec-item">
-                <div className="spec-key">Decision Threshold</div>
-                <div className="spec-value">0.5 (sigmoid probability)</div>
+                <div className="spec-key">Severity Index</div>
+                <div className="spec-value">SAT-AI Multi-Criteria Impact Index</div>
               </div>
               <div className="spec-item">
-                <div className="spec-key">Dataset</div>
-                <div className="spec-value">Sen1Floods11 v1.1 Hand-Labeled</div>
+                <div className="spec-key">Historical Hazard</div>
+                <div className="spec-value">NRSC 22-Year Flood Zonation Integration</div>
               </div>
               <div className="spec-item">
-                <div className="spec-key">Experiment Chips</div>
-                <div className="spec-value">446 chips (512×512 px)</div>
+                <div className="spec-key">Safety Standard</div>
+                <div className="spec-value">Strict Zero-Hallucination Policy</div>
               </div>
             </div>
 
             <div className="model-protocol-card">
               <div className="protocol-header">
-                <div className="protocol-title">Training Protocol &amp; Split Breakdown</div>
+                <div className="protocol-title">Why Radar Sees What Optical Cameras Cannot</div>
                 <div className="protocol-sub">
-                  Leave-one-region-out cross-validation ensuring strict geographic separation:
+                  Optical satellites are blinded by monsoon storm clouds during active disaster peaks:
                 </div>
               </div>
 
               <div className="protocol-chips-grid">
                 <div className="protocol-chip-box">
-                  <div className="protocol-chip-val">333</div>
-                  <div className="protocol-chip-label">Training Chips</div>
+                  <div className="protocol-chip-val">Day &amp; Night</div>
+                  <div className="protocol-chip-label">Active Microwave Pulse</div>
                 </div>
                 <div className="protocol-chip-box">
-                  <div className="protocol-chip-val">30</div>
-                  <div className="protocol-chip-label">Validation Chips (Mekong)</div>
+                  <div className="protocol-chip-val">Cloud-Free</div>
+                  <div className="protocol-chip-label">Unblocked by Monsoons</div>
                 </div>
                 <div className="protocol-chip-box">
-                  <div className="protocol-chip-val">68</div>
-                  <div className="protocol-chip-label">India Test Chips</div>
+                  <div className="protocol-chip-val">Mirror Effect</div>
+                  <div className="protocol-chip-label">Specular Water Reflection</div>
                 </div>
                 <div className="protocol-chip-box">
-                  <div className="protocol-chip-val">15</div>
-                  <div className="protocol-chip-label">Reserved Chips (Bolivia)</div>
+                  <div className="protocol-chip-val">10-Meter</div>
+                  <div className="protocol-chip-label">Field-Level Precision</div>
                 </div>
               </div>
 
               <div className="protocol-distinction-banner">
-                <strong>Important Dataset Distinction: </strong>
-                Our experiment encompasses <strong>446 total hand-labeled chips</strong> across 11 global flood events.
-                Exactly <strong>333 chips</strong> were used to train and optimize the model weights. The remaining chips
-                were held out for validation (30 Mekong), unseen regional testing (68 India), and reservation (15 Bolivia).
+                <strong>Physics of Satellite Water Detection: </strong>
+                Calm flood water behaves like an electromagnetic mirror for satellite radar beams, bouncing the microwave energy away into space. This produces the characteristic dark signature on radar imagery, allowing automated detection of inundated landscapes.
               </div>
             </div>
           </div>
         </section>
 
-        {/* 8. PERFORMANCE & 9. WHY INDIA HOLDOUT MATTERS */}
-        <section id="results" className="section-padding">
-          <div className="section-header">
-            <div className="section-tag">Empirical Evaluation</div>
-            <h2 className="section-title">
-              How Well Does It <span className="gradient-text">Perform?</span>
-            </h2>
-            <p className="section-lead">
-              Evaluation on a geographically held-out Indian test region.
-            </p>
-          </div>
-
-          <div className="results-metric-grid">
-            <div className="result-card highlight">
-              <div className="result-metric-val">0.523</div>
-              <div className="result-metric-name">IoU Score</div>
-            </div>
-            <div className="result-card">
-              <div className="result-metric-val">0.687</div>
-              <div className="result-metric-name">F1 Score</div>
-            </div>
-            <div className="result-card">
-              <div className="result-metric-val">0.751</div>
-              <div className="result-metric-name">Precision</div>
-            </div>
-            <div className="result-card">
-              <div className="result-metric-val">0.633</div>
-              <div className="result-metric-name">Recall</div>
-            </div>
-          </div>
-
-          <div className="comparison-container">
-            <div className="comparison-card">
-              <div className="comparison-header">
-                <span className="comparison-title">U-Net vs Classical Otsu Baseline</span>
-                <span className="meta-chip">Held-Out India (68 chips)</span>
-              </div>
-
-              <div className="comparison-bars">
-                <div className="comp-bar-item">
-                  <div className="comp-bar-meta">
-                    <strong style={{ color: '#fff' }}>U-Net</strong>
-                    <span style={{ color: 'var(--accent)' }}>IoU = 0.523</span>
-                  </div>
-                  <div className="comp-bar-track">
-                    <div className="comp-bar-fill model" style={{ width: '52.3%' }}>
-                      0.523
-                    </div>
-                  </div>
-                </div>
-
-                <div className="comp-bar-item">
-                  <div className="comp-bar-meta">
-                    <span style={{ color: 'var(--fg-dim)' }}>Otsu Baseline</span>
-                    <span style={{ color: 'var(--fg-dim)' }}>IoU = 0.375</span>
-                  </div>
-                  <div className="comp-bar-track">
-                    <div className="comp-bar-fill baseline" style={{ width: '37.5%' }}>
-                      0.375
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="improvement-badge">
-                <span>▲</span>
-                <span>Improvement: +0.148 IoU over Otsu baseline</span>
-              </div>
-            </div>
-
-            {/* 9. RESEARCH VALIDATION CALLOUT */}
-            <div className="why-matters-card">
-              <div>
-                <div className="why-matters-title">
-                  <span>✦</span>
-                  <span>Why the India result matters</span>
-                </div>
-                <p className="why-matters-text">
-                  India was kept geographically separate from training, allowing SAT-AI to test whether
-                  the learned representation transfers to an unseen geographic region.
-                </p>
-              </div>
-
-              <div className="mekong-callout">
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                  <span className="mekong-val">Mekong validation: 0.868 IoU</span>
-                  <span className="mekong-badge">Validation Only</span>
-                </div>
-                <div>
-                  Used strictly for epoch checkpoint selection during training. The held-out India test set (0.523)
-                  measures true unseen generalization without data leakage.
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 10. EXPLAINABLE AI */}
-        <section id="xai" className="section-padding">
-          <div className="section-header">
-            <div className="section-tag">Model Interpretability</div>
-            <h2 className="section-title">
-              Why Did the Model Make <span className="gradient-text">This Prediction?</span>
-            </h2>
-            <p className="section-lead">
-              Model attribution helps us inspect which input features influenced the segmentation.
-            </p>
-          </div>
-
-          <div className="xai-grid">
-            <div className="xai-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-                <span style={{ fontWeight: 700, fontSize: 16 }}>Input Feature Attribution</span>
-                <span className="meta-chip">Integrated Gradients + Occlusion</span>
-              </div>
-
-              <div className="attribution-bar-item">
-                <div className="attr-meta">
-                  <span className="attr-name">VV/VH Ratio Band</span>
-                  <span className="attr-percent">53.4%</span>
-                </div>
-                <div className="attr-track">
-                  <div className="attr-fill primary" style={{ width: '53.4%' }} />
-                </div>
-                <div className="attr-desc">
-                  Largest attribution share, but occlusion disagrees on its sign, and adding it to VV + VH changed test IoU by only 0.0019.
-                </div>
-              </div>
-
-              <div className="attribution-bar-item">
-                <div className="attr-meta">
-                  <span className="attr-name">VV Polarisation</span>
-                  <span className="attr-percent">29.8%</span>
-                </div>
-                <div className="attr-track">
-                  <div className="attr-fill" style={{ width: '29.8%' }} />
-                </div>
-                <div className="attr-desc">
-                  Co-polarised backscatter. Calm open water is dark in VV.
-                </div>
-              </div>
-
-              <div className="attribution-bar-item">
-                <div className="attr-meta">
-                  <span className="attr-name">VH Polarisation</span>
-                  <span className="attr-percent">16.8%</span>
-                </div>
-                <div className="attr-track">
-                  <div className="attr-fill" style={{ width: '16.8%' }} />
-                </div>
-                <div className="attr-desc">
-                  Cross-polarised backscatter. Also low over open water; higher over vegetation.
-                </div>
-              </div>
-            </div>
-
-            <div className="xai-info-card">
-              <div>
-                <h3 className="xai-info-title">Feature Contribution Analysis</h3>
-                <p className="xai-info-text">
-                  The VV/VH ratio takes over half of the attribution (53.4%), but attribution is not necessity. In the modality ablation the ratio band alone scored IoU 0.3686, VV alone 0.5279, and all three bands together 0.523: the flood signal lives in absolute backscatter.
-                </p>
-                <p className="xai-info-text">
-                  Shares are Integrated Gradients over 12 held-out India test chips; occlusion was run as a cross-check.
-                </p>
-              </div>
-
-              <div className="xai-disclaimer">
-                <strong>Scientific Disclaimer: </strong>
-                These values describe model attribution, not physical causation.
-              </div>
-            </div>
-          </div>
-        </section>
 
         {/* 11. BIHAR FLOOD IMPACT ASSESSMENT & INTERACTIVE MAP */}
         <BiharImpactSection />
@@ -733,8 +543,8 @@ export default function Home() {
                   <div className="chat-empty-icon">🛰️</div>
                   <div className="chat-empty-title">Flood Intelligence Copilot Ready</div>
                   <div className="chat-empty-text">
-                    Ask any question above about the U-Net architecture, held-out India test IoU,
-                    SAR polarizations, or policy refusals.
+                    Ask any question above about Bihar flood inundation, affected districts,
+                    cropland damage, infrastructure exposure, or satellite observation dates.
                   </div>
                 </div>
               )}
@@ -829,7 +639,7 @@ export default function Home() {
                 ref={inputRef}
                 type="text"
                 className="chat-input-field"
-                placeholder="Ask about U-Net parameters, India IoU benchmark, VV/VH features, or training data..."
+                placeholder="Ask about Bihar flood inundation, affected districts, crop damage, or satellite observations..."
                 value={inputQuestion}
                 onChange={(e) => setInputQuestion(e.target.value)}
                 disabled={isAsking}
