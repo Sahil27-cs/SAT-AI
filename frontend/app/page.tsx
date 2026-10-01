@@ -2,23 +2,19 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { askAgent, type ChatReply, answeredBy } from '@/lib/api';
 import { FormattedAnswer } from '@/components/FormattedAnswer';
-import { BiharImpactSection } from '@/components/BiharImpactSection';
-import HERO_CHIP from '@/lib/hero-chip.generated.json';
-
-const STARTER_QUESTIONS = [
-  'Which Bihar district is most affected?',
-  'How much area is flooded?',
-  'How much cropland is affected?',
-  'Which areas have the highest flood impact?',
-  'What changed after the flood?',
-  'Which areas are historically flood-prone?',
-  'How reliable is this analysis?',
-  'What is the India test IoU?',
-  'What model did you train?',
-  'What do the XAI results mean?',
-];
+import {
+  PLACES_DATABASE,
+  SEARCH_INDEX,
+  getPlaceProfile,
+  type PlaceProfile,
+  type HistoricalEvent,
+} from '@/lib/places-data';
+import BIHAR_DATA from '@/lib/bihar-impact-data.json';
+import ALL_38_DISTRICTS_2022 from '@/lib/bihar-all-38-districts.json';
+import ALL_38_DISTRICTS_2024 from '@/lib/bihar-2024-districts.json';
 
 interface ChatMessage {
   id: string;
@@ -27,8 +23,32 @@ interface ChatMessage {
   meta?: ChatReply;
 }
 
+type SortKey = 'flooded_km2' | 'flood_pct' | 'cropland_km2' | 'impact_index';
+
 export default function Home() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [selectedPlaceId, setSelectedPlaceId] = useState('bihar');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<typeof SEARCH_INDEX>([]);
+  const [selectedEventIndex, setSelectedEventIndex] = useState<number>(4); // Default to 2022 validated event
+  const [selectedDistrict, setSelectedDistrict] = useState<string>('Muzaffarpur');
+  const [sortKey, setSortKey] = useState<SortKey>('flooded_km2');
+  const [districtFilter, setDistrictFilter] = useState('');
+  const [showAll38, setShowAll38] = useState(false);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+
+  // Map Layer Toggles
+  const [activeLayers, setActiveLayers] = useState({
+    satelliteObs: true,
+    vegetation: true,
+    cropland: true,
+    waterBodies: true,
+    terrain: false,
+    settlements: false,
+    roads: false,
+    floodExtent: true,
+    historicalHazard: true,
+  });
 
   // Chat State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -38,6 +58,18 @@ export default function Home() {
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const place: PlaceProfile = getPlaceProfile(selectedPlaceId);
+  const currentEvent: HistoricalEvent =
+    place.timeline[selectedEventIndex] || place.timeline[place.timeline.length - 1] || place.timeline[0];
+
+  const isRecentEvent = currentEvent.date.startsWith('2024');
+
+  // Toggle map layers
+  const toggleLayer = (layer: keyof typeof activeLayers) => {
+    setActiveLayers((prev) => ({ ...prev, [layer]: !prev[layer] }));
+  };
+
+  // Scroll to anchor
   const scrollToSection = (id: string) => {
     setMobileMenuOpen(false);
     const element = document.getElementById(id);
@@ -46,6 +78,70 @@ export default function Home() {
     }
   };
 
+  // Place search handling
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    if (!val.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    const q = val.toLowerCase().trim();
+    const matches = SEARCH_INDEX.filter(
+      (item) => item.name.toLowerCase().includes(q) || item.parent.toLowerCase().includes(q)
+    ).slice(0, 6);
+    setSearchResults(matches);
+  };
+
+  const handleSelectPlace = (id: string, name: string) => {
+    setSelectedPlaceId(id);
+    setSearchQuery('');
+    setSearchResults([]);
+    setSelectedEventIndex(id === 'bihar' ? 4 : 0);
+  };
+
+  // Active district data
+  const districtData =
+    ALL_38_DISTRICTS_2022.find((d) => d.district_name.toLowerCase() === selectedDistrict.toLowerCase()) ||
+    ALL_38_DISTRICTS_2022[0];
+
+  // 38 Districts list for active event
+  const currentDistrictsRaw = isRecentEvent ? ALL_38_DISTRICTS_2024 : ALL_38_DISTRICTS_2022;
+  const normalizedDistricts = currentDistrictsRaw.map((d: any) => ({
+    name: d.district_name,
+    flooded_km2: d.flooded_area_km2 || 0.0,
+    district_area_km2: d.district_area_km2,
+    flood_pct: d.flood_percentage || (d.flood_fraction ? d.flood_fraction * 100 : 0.0),
+    cropland_km2: d.cropland_affected_km2 || d.cropland_exposed_km2 || 0.0,
+    buildings: d.building_exposure ?? d.buildings_exposed ?? null,
+    roads_km: d.road_exposure_km ?? d.roads_exposed_km ?? null,
+    hazard_class: d.historical_hazard_class || d.historical_hazard || 'Moderate',
+    basin: d.primary_river_basin || 'Ganga Basin',
+    impact_index: d.sat_ai_impact_index ?? (isRecentEvent ? null : 0.45),
+  }));
+
+  const filteredDistricts = normalizedDistricts
+    .filter((d) => {
+      if (districtFilter.trim()) {
+        return d.name.toLowerCase().includes(districtFilter.toLowerCase().trim());
+      }
+      if (!showAll38) {
+        return d.flooded_km2 > 0;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortKey === 'flooded_km2') return b.flooded_km2 - a.flooded_km2;
+      if (sortKey === 'flood_pct') return b.flood_pct - a.flood_pct;
+      if (sortKey === 'cropland_km2') return b.cropland_km2 - a.cropland_km2;
+      if (sortKey === 'impact_index') {
+        const valA = a.impact_index ?? -1;
+        const valB = b.impact_index ?? -1;
+        return valB - valA;
+      }
+      return 0;
+    });
+
+  // Chat message sending
   const handleSendQuestion = useCallback(
     async (textToSend: string) => {
       const q = textToSend.trim();
@@ -118,7 +214,9 @@ export default function Home() {
 
   return (
     <>
-      {/* 3. NAVBAR */}
+      {/* ====================================================================
+          1. NAVBAR
+          ==================================================================== */}
       <header className="site-header">
         <div className="site-container nav-container">
           <a
@@ -134,7 +232,7 @@ export default function Home() {
             </div>
             <div className="brand-text">
               <span className="brand-title">SAT-AI</span>
-              <span className="brand-sub">Satellite AI for Flood Detection</span>
+              <span className="brand-sub">Satellite Intelligence Platform</span>
             </div>
           </a>
 
@@ -151,38 +249,38 @@ export default function Home() {
             <ul className={`nav-links ${mobileMenuOpen ? 'mobile-open' : ''}`}>
               <li>
                 <a
-                  href="#how-it-works"
+                  href="#explore"
                   className="nav-link"
                   onClick={(e) => {
                     e.preventDefault();
-                    scrollToSection('how-it-works');
+                    scrollToSection('explore');
                   }}
                 >
-                  How It Works
+                  Explore
                 </a>
               </li>
               <li>
                 <a
-                  href="#capabilities"
+                  href="#disasters"
                   className="nav-link"
                   onClick={(e) => {
                     e.preventDefault();
-                    scrollToSection('capabilities');
+                    scrollToSection('disasters');
                   }}
                 >
-                  Capabilities
+                  Disasters
                 </a>
               </li>
               <li>
                 <a
-                  href="#bihar-impact"
+                  href="#satellite-insights"
                   className="nav-link"
                   onClick={(e) => {
                     e.preventDefault();
-                    scrollToSection('bihar-impact');
+                    scrollToSection('satellite-insights');
                   }}
                 >
-                  Bihar Impact Map
+                  Satellite Insights
                 </a>
               </li>
               <li>
@@ -198,27 +296,18 @@ export default function Home() {
                 </a>
               </li>
               <li>
-                <a
-                  href="#scope"
-                  className="nav-link"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    scrollToSection('scope');
-                  }}
-                >
-                  About
-                </a>
+                <Link href="/research" className="nav-link">
+                  Research
+                </Link>
               </li>
               <li>
                 <button
                   type="button"
                   className="nav-cta"
-                  onClick={() => {
-                    scrollToSection('bihar-impact');
-                  }}
+                  onClick={() => scrollToSection('explore')}
                 >
-                  <span>Explore Impact</span>
-                  <span>✦</span>
+                  <span>Explore a Place</span>
+                  <span>→</span>
                 </button>
               </li>
             </ul>
@@ -227,30 +316,102 @@ export default function Home() {
       </header>
 
       <main className="site-container">
-        {/* 4. HERO SECTION */}
+        {/* ====================================================================
+            2. HERO SECTION
+            ==================================================================== */}
         <section id="hero" className="hero-section">
           <div className="hero-grid">
             <div className="hero-content">
               <div className="hero-eyebrow">
                 <span>✦</span>
-                <span>SATELLITE REMOTE SENSING &amp; FLOOD IMPACT INTELLIGENCE</span>
+                <span>SAT-AI // SATELLITE INTELLIGENCE PLATFORM</span>
               </div>
               <h1 className="hero-title">
-                Detecting Floods &amp; Impact<br />From Space.
+                Understand Any Place<br />From Space.
               </h1>
               <p className="hero-desc">
-                SAT-AI combines Sentinel-1 SAR satellite imagery with intelligent geospatial analytics to detect flood water extents, evaluate agricultural crop damage, and assess district-level exposure across Bihar.
+                Explore the environment, vegetation, water, terrain, disaster history, satellite observations, and spatial changes of any place.
               </p>
               <div className="hero-secondary-line">
-                Sentinel-1 SAR Radar • Bihar Impact Assessment • Cropland Damage • Grounded AI Copilot
+                Search a place. Explore its story. Ask SAT-AI.
               </div>
+
+              {/* Main Search Input */}
+              <div className="hero-search-wrapper">
+                <form
+                  className="hero-search-bar"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    scrollToSection('explore');
+                  }}
+                >
+                  <span className="hero-search-icon">🔍</span>
+                  <input
+                    type="text"
+                    className="hero-search-input"
+                    placeholder="Search a place, district or region (e.g. Bihar, Muzaffarpur, Mumbai, Assam)..."
+                    value={searchQuery}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                  />
+                  <button type="submit" className="quick-chip active" style={{ padding: '6px 16px' }}>
+                    Look Up
+                  </button>
+                </form>
+
+                {/* Autocomplete Dropdown in Hero if Typing */}
+                {searchResults.length > 0 && (
+                  <div className="place-search-dropdown" style={{ marginTop: '8px' }}>
+                    {searchResults.map((item) => (
+                      <button
+                        key={`${item.id}-${item.name}`}
+                        type="button"
+                        className="dropdown-item"
+                        onClick={() => {
+                          handleSelectPlace(item.id, item.name);
+                          scrollToSection('explore');
+                        }}
+                      >
+                        <span className="item-name">{item.name}</span>
+                        <span className="item-meta">
+                          {item.type} • {item.parent}
+                        </span>
+                        {item.isAvailable && <span className="item-badge">Active Layers</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="hero-quick-tags">
+                  <span>Quick Explore:</span>
+                  {[
+                    { id: 'bihar', name: 'Bihar' },
+                    { id: 'muzaffarpur', name: 'Muzaffarpur' },
+                    { id: 'darbhanga', name: 'Darbhanga' },
+                    { id: 'mumbai', name: 'Mumbai' },
+                    { id: 'assam', name: 'Assam' },
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`quick-tag-chip ${selectedPlaceId === p.id ? 'active' : ''}`}
+                      onClick={() => {
+                        handleSelectPlace(p.id, p.name);
+                        scrollToSection('explore');
+                      }}
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="hero-actions">
                 <button
                   type="button"
                   className="btn-primary"
-                  onClick={() => scrollToSection('bihar-impact')}
+                  onClick={() => scrollToSection('explore')}
                 >
-                  <span>Explore Bihar Map</span>
+                  <span>Explore a Place</span>
                   <span>→</span>
                 </button>
                 <button
@@ -266,460 +427,1663 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Right Visual: Satellite Intelligence Platform HUD */}
             <div className="hero-visual">
-              {/* Satellite Frame Header */}
-              <div className="workstation-header">
-                <div className="workstation-dots">
-                  <span className="workstation-dot active" title="Active Satellite Sensor" />
-                  <span className="workstation-dot" />
-                  <span className="workstation-dot" />
+              <div className="satellite-hud-card">
+                <div className="hud-header-bar">
+                  <span className="hud-tag">
+                    <span>🛰️</span> SATELLITE INTELLIGENCE // EARTH OBSERVATION
+                  </span>
+                  <span className="hud-live-beacon">ACTIVE SATELLITE LAYERS</span>
                 </div>
-                <span>SENTINEL-1 SATELLITE RADAR // 10M C-BAND // SURFACE WATER DETECTION</span>
-                <span className="hero-visual-badge">SATELLITE RADAR CAPTURE</span>
-              </div>
 
-              {/* Satellite Radar Surface Water Detection Visualization */}
-              <div className="hero-visual-frame">
-                <Image
-                  src={HERO_CHIP.image}
-                  alt="Sentinel-1 radar surface water detection over North Bihar flood plains"
-                  width={1568}
-                  height={512}
-                  className="hero-img"
-                  priority
+                <div className="hud-image-viewport">
+                  <Image
+                    src="/images/satellite-hero.jpg"
+                    alt="Satellite view of river basin and floodplains from space"
+                    width={1920}
+                    height={1080}
+                    priority
+                  />
+                  <div className="hud-overlay-grid" />
+                </div>
+
+                <div className="hud-telemetry-banner">
+                  <div className="hud-telemetry-item">
+                    <span className="hud-telemetry-label">Active Focus</span>
+                    <span className="hud-telemetry-val">Ganga Floodplain (Bihar, India)</span>
+                  </div>
+                  <div className="hud-telemetry-item">
+                    <span className="hud-telemetry-label">Constellation</span>
+                    <span className="hud-telemetry-val">Sentinel-1 C-SAR &amp; Sentinel-2 MSI</span>
+                  </div>
+                  <div className="hud-telemetry-item">
+                    <span className="hud-telemetry-label">Vegetation Dynamic</span>
+                    <span className="hud-telemetry-val">NDVI 0.28 – 0.78 Monsoonal Cycle</span>
+                  </div>
+                  <div className="hud-telemetry-item">
+                    <span className="hud-telemetry-label">Spatial Resolution</span>
+                    <span className="hud-telemetry-val">10 m Metric Projected (UTM-45N)</span>
+                  </div>
+                </div>
+
+                <div className="hud-footer-action">
+                  <span>Explore Bihar through environmental and disaster layers</span>
+                  <a
+                    href="#explore"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      scrollToSection('explore');
+                    }}
+                  >
+                    Inspect Place Profile ↓
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ====================================================================
+            3. ONE PLACE. MANY LAYERS OF INTELLIGENCE.
+            ==================================================================== */}
+        <section id="layers-of-intelligence" className="section-padding">
+          <div className="section-header centered">
+            <div className="section-tag">Platform Architecture</div>
+            <h2 className="section-title">
+              One Place. <span className="gradient-text">Many Layers of Intelligence.</span>
+            </h2>
+            <p className="section-lead">
+              SAT-AI combines geographic, environmental and satellite information to build a richer picture of a place.
+            </p>
+          </div>
+
+          <div className="flow-track-container">
+            <div className="flow-step-node">
+              <span className="icon">📍</span>
+              <span className="name">Location</span>
+              <span className="desc">Admin &amp; Coordinates</span>
+            </div>
+            <span className="flow-arrow">→</span>
+
+            <div className="flow-step-node">
+              <span className="icon">🌿</span>
+              <span className="name">Environment</span>
+              <span className="desc">Terrain, Crops &amp; Water</span>
+            </div>
+            <span className="flow-arrow">→</span>
+
+            <div className="flow-step-node">
+              <span className="icon">🛰️</span>
+              <span className="name">Satellite</span>
+              <span className="desc">Sentinel-1 &amp; Sentinel-2</span>
+            </div>
+            <span className="flow-arrow">→</span>
+
+            <div className="flow-step-node">
+              <span className="icon">🌊</span>
+              <span className="name">Disasters</span>
+              <span className="desc">Decadal Hazard History</span>
+            </div>
+            <span className="flow-arrow">→</span>
+
+            <div className="flow-step-node">
+              <span className="icon">🔄</span>
+              <span className="name">Change</span>
+              <span className="desc">Inundation &amp; ΔNDVI</span>
+            </div>
+            <span className="flow-arrow">→</span>
+
+            <div className="flow-step-node">
+              <span className="icon">🗺️</span>
+              <span className="name">Impact</span>
+              <span className="desc">38-District Exposure</span>
+            </div>
+            <span className="flow-arrow">→</span>
+
+            <div className="flow-step-node">
+              <span className="icon">🤖</span>
+              <span className="name">AI Explanation</span>
+              <span className="desc">Grounded Geospatial Copilot</span>
+            </div>
+          </div>
+
+          <div className="intelligence-features-strip">
+            <div className="feature-pill-node">🌿 Vegetation</div>
+            <div className="feature-pill-node">🌾 Agriculture</div>
+            <div className="feature-pill-node">💧 Water</div>
+            <div className="feature-pill-node">🏔 Terrain</div>
+            <div className="feature-pill-node">🏙 Built Environment</div>
+            <div className="feature-pill-node">🌊 Flood</div>
+            <div className="feature-pill-node">🔥 Fire</div>
+            <div className="feature-pill-node">🌪 Cyclone</div>
+            <div className="feature-pill-node">🌍 Earthquake</div>
+            <div className="feature-pill-node">🛰 Satellite Change</div>
+            <div className="feature-pill-node">🤖 AI Assistant</div>
+          </div>
+        </section>
+
+        {/* ====================================================================
+            4. EXPLORE A PLACE
+            ==================================================================== */}
+        <section id="explore" className="section-padding">
+          <div className="section-header centered">
+            <div className="section-tag">Geospatial Place Explorer</div>
+            <h2 className="section-title">
+              Explore a <span className="gradient-text">Place</span>
+            </h2>
+            <p className="section-lead">
+              Search a place, district or region to inspect its environmental profile, historical hazards, and satellite observations.
+            </p>
+
+            <div className="place-search-container" style={{ margin: '24px auto 0', maxWidth: '640px' }}>
+              <div className="place-search-bar">
+                <span className="search-icon">🔍</span>
+                <input
+                  type="text"
+                  className="place-search-input"
+                  placeholder="Search Bihar, Mumbai, Muzaffarpur, Darbhanga, Assam..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                 />
-              </div>
-              <div className="hero-panel-labels">
-                <span>1. Raw Radar Backscatter (SAR)</span>
-                <span>2. Reference Inundation Layer</span>
-                <span>3. Detected Flood Extent</span>
-              </div>
-              <div className="hero-visual-bar">
-                <span className="hero-visual-badge">North Bihar Flood Plain</span>
-                <span>
-                  Cloud-penetrating 10m radar imagery · Autonomous surface water delineation · Equal-area metric projection
-                </span>
-              </div>
-              <div className="hero-legend">
-                <span><i style={{ background: '#38bdf8' }} />Inundated Flood Water</span>
-                <span><i style={{ background: '#f59e0b' }} />Surface Water Spread</span>
-                <span><i style={{ background: '#f43f5e' }} />Saturated Soil / Moat</span>
-                <span><i style={{ background: '#334155' }} />Dry Land &amp; Settlements</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 5. PLATFORM METRICS */}
-        <section id="metrics" className="metrics-section">
-          <div className="metrics-grid">
-            <div className="metric-card">
-              <div className="metric-val">10m</div>
-              <div className="metric-label">Spatial Resolution</div>
-            </div>
-            <div className="metric-card">
-              <div className="metric-val">38</div>
-              <div className="metric-label">Bihar Districts Analyzed</div>
-            </div>
-            <div className="metric-card">
-              <div className="metric-val">3-Class</div>
-              <div className="metric-label">Cropland Damage Mapping</div>
-            </div>
-            <div className="metric-card">
-              <div className="metric-val">100%</div>
-              <div className="metric-label">Evidence-Based Grounding</div>
-            </div>
-          </div>
-          <div className="metric-footer-note">
-            High-precision satellite remote sensing and deterministic geospatial impact intelligence
-          </div>
-        </section>
-
-        {/* 6. HOW IT WORKS */}
-        <section id="how-it-works" className="section-padding">
-          <div className="section-header centered">
-            <div className="section-tag">End-to-End Workflow</div>
-            <h2 className="section-title">
-              From Satellite Radar to <span className="gradient-text">Impact Intelligence</span>
-            </h2>
-            <p className="section-lead">
-              Transforming raw orbital radar measurements into actionable flood extent and damage analytics.
-            </p>
-          </div>
-
-          <div className="pipeline-grid">
-            <div className="pipeline-card">
-              <div className="pipeline-step-header">
-                <span className="pipeline-num">01</span>
-                <span className="pipeline-icon">🛰️</span>
-              </div>
-              <h3 className="pipeline-card-title">ORBITAL OBSERVATION</h3>
-              <div className="pipeline-primary">Sentinel-1 Radar</div>
-              <div className="pipeline-sub">
-                C-band Synthetic Aperture Radar penetrates cloud decks and monsoon storms to capture surface reflections day or night.
-              </div>
-            </div>
-
-            <div className="pipeline-card">
-              <div className="pipeline-step-header">
-                <span className="pipeline-num">02</span>
-                <span className="pipeline-icon">🌊</span>
-              </div>
-              <h3 className="pipeline-card-title">INUNDATION EXTRACTION</h3>
-              <div className="pipeline-primary">Surface Water Spread</div>
-              <div className="pipeline-sub">
-                Autonomous radar backscatter analysis maps open water footprints at 10-meter equal-area resolution.
-              </div>
-            </div>
-
-            <div className="pipeline-card">
-              <div className="pipeline-step-header">
-                <span className="pipeline-num">03</span>
-                <span className="pipeline-icon">🌾</span>
-              </div>
-              <h3 className="pipeline-card-title">AGRICULTURAL DAMAGE</h3>
-              <div className="pipeline-primary">Cropland Assessment</div>
-              <div className="pipeline-sub">
-                Multi-spectral pre/post optical difference analysis tracks unaffected, partially damaged, and destroyed crops.
-              </div>
-            </div>
-
-            <div className="pipeline-card">
-              <div className="pipeline-step-header">
-                <span className="pipeline-num">04</span>
-                <span className="pipeline-icon">🏛️</span>
-              </div>
-              <h3 className="pipeline-card-title">DISTRICT IMPACT & COPILOT</h3>
-              <div className="pipeline-primary">Exposure Analytics</div>
-              <div className="pipeline-sub">
-                Deterministic GIS overlays evaluate affected villages, roads, and buildings, queryable via our grounded AI assistant.
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 7. CORE PLATFORM CAPABILITIES */}
-        <section id="capabilities" className="section-padding">
-          <div className="section-header">
-            <div className="section-tag">System Capabilities</div>
-            <h2 className="section-title">
-              Why Satellite Remote Sensing <span className="gradient-text">Matters</span>
-            </h2>
-            <p className="section-lead">
-              Purpose-built capabilities designed specifically for monsoon flood challenges in Bihar.
-            </p>
-          </div>
-
-          <div className="model-overview-grid">
-            <div className="specs-grid">
-              <div className="spec-item">
-                <div className="spec-key">Sensor Modality</div>
-                <div className="spec-value">Synthetic Aperture Radar (SAR) + Optical</div>
-              </div>
-              <div className="spec-item">
-                <div className="spec-key">Weather Resilience</div>
-                <div className="spec-value">100% cloud-penetrating radar capability</div>
-              </div>
-              <div className="spec-item">
-                <div className="spec-key">Projection Standard</div>
-                <div className="spec-value">UTM Zone 45N (EPSG:32645) Metric Equal-Area</div>
-              </div>
-              <div className="spec-item">
-                <div className="spec-key">Geographic Scope</div>
-                <div className="spec-value">All 38 Districts of Bihar, India</div>
-              </div>
-              <div className="spec-item">
-                <div className="spec-key">Crop Damage Classes</div>
-                <div className="spec-value">No Damage (0), Partial (1), Full Damage (2)</div>
-              </div>
-              <div className="spec-item">
-                <div className="spec-key">Severity Index</div>
-                <div className="spec-value">SAT-AI Multi-Criteria Impact Index</div>
-              </div>
-              <div className="spec-item">
-                <div className="spec-key">Historical Hazard</div>
-                <div className="spec-value">NRSC 22-Year Flood Zonation Integration</div>
-              </div>
-              <div className="spec-item">
-                <div className="spec-key">Safety Standard</div>
-                <div className="spec-value">Strict Zero-Hallucination Policy</div>
-              </div>
-            </div>
-
-            <div className="model-protocol-card">
-              <div className="protocol-header">
-                <div className="protocol-title">Why Radar Sees What Optical Cameras Cannot</div>
-                <div className="protocol-sub">
-                  Optical satellites are blinded by monsoon storm clouds during active disaster peaks:
-                </div>
-              </div>
-
-              <div className="protocol-chips-grid">
-                <div className="protocol-chip-box">
-                  <div className="protocol-chip-val">Day &amp; Night</div>
-                  <div className="protocol-chip-label">Active Microwave Pulse</div>
-                </div>
-                <div className="protocol-chip-box">
-                  <div className="protocol-chip-val">Cloud-Free</div>
-                  <div className="protocol-chip-label">Unblocked by Monsoons</div>
-                </div>
-                <div className="protocol-chip-box">
-                  <div className="protocol-chip-val">Mirror Effect</div>
-                  <div className="protocol-chip-label">Specular Water Reflection</div>
-                </div>
-                <div className="protocol-chip-box">
-                  <div className="protocol-chip-val">10-Meter</div>
-                  <div className="protocol-chip-label">Field-Level Precision</div>
-                </div>
-              </div>
-
-              <div className="protocol-distinction-banner">
-                <strong>Physics of Satellite Water Detection: </strong>
-                Calm flood water behaves like an electromagnetic mirror for satellite radar beams, bouncing the microwave energy away into space. This produces the characteristic dark signature on radar imagery, allowing automated detection of inundated landscapes.
-              </div>
-            </div>
-          </div>
-        </section>
-
-
-        {/* 11. BIHAR FLOOD IMPACT ASSESSMENT & INTERACTIVE MAP */}
-        <BiharImpactSection />
-
-        {/* 12. AI ASSISTANT — MAJOR FEATURE */}
-        <section id="assistant" className="assistant-section">
-          <div className="section-header centered">
-            <div className="section-tag">Interactive Research Copilot</div>
-            <h2 className="section-title">
-              Ask <span className="gradient-text">SAT-AI</span>
-            </h2>
-            <p className="section-lead">
-              Explore the model, dataset, results and scientific limitations through a grounded AI assistant.
-            </p>
-          </div>
-
-          <div className="assistant-card">
-            <div className="assistant-header">
-              <div className="assistant-header-left">
-                <span className="assistant-status-beacon" />
-                <span className="assistant-header-title">SAT-AI Research Assistant</span>
-                <span className="assistant-badge">GROUNDED COPILOT</span>
-              </div>
-              <div className="assistant-controls">
-                <span className="kbd-hint">Press Enter ↵</span>
-                {messages.length > 0 && (
+                {searchQuery && (
                   <button
                     type="button"
-                    className="clear-chat-btn"
-                    onClick={() => setMessages([])}
-                    title="Clear chat history"
+                    className="clear-search-btn"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setSearchResults([]);
+                    }}
                   >
-                    <span>✕</span> Clear chat
+                    ✕
                   </button>
                 )}
               </div>
-            </div>
 
-            <div className="starter-prompts">
-              <div className="starter-prompts-label">Suggested Research Inquiries:</div>
-              <div className="prompt-chips-grid">
-                {STARTER_QUESTIONS.map((q) => (
+              {searchResults.length > 0 && (
+                <div className="place-search-dropdown">
+                  {searchResults.map((item) => (
+                    <button
+                      key={`${item.id}-${item.name}`}
+                      type="button"
+                      className="dropdown-item"
+                      onClick={() => handleSelectPlace(item.id, item.name)}
+                    >
+                      <span className="item-name">{item.name}</span>
+                      <span className="item-meta">
+                        {item.type} • {item.parent}
+                      </span>
+                      {item.isAvailable && <span className="item-badge">Active Layers</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="quick-place-chips" style={{ justifyContent: 'center', marginTop: '14px' }}>
+                <span className="chips-label">Quick Places:</span>
+                {[
+                  { id: 'bihar', label: 'Bihar' },
+                  { id: 'muzaffarpur', label: 'Muzaffarpur' },
+                  { id: 'darbhanga', label: 'Darbhanga' },
+                  { id: 'mumbai', label: 'Mumbai' },
+                  { id: 'assam', label: 'Assam' },
+                ].map((p) => (
                   <button
-                    key={q}
+                    key={p.id}
                     type="button"
-                    className="prompt-chip"
-                    onClick={() => handleSendQuestion(q)}
-                    disabled={isAsking}
+                    className={`quick-chip ${selectedPlaceId === p.id ? 'active' : ''}`}
+                    onClick={() => handleSelectPlace(p.id, p.label)}
                   >
-                    <span>✦</span> {q}
+                    📍 {p.label}
                   </button>
                 ))}
               </div>
             </div>
+          </div>
 
-            <div className="chat-window">
-              {messages.length === 0 && (
-                <div className="chat-empty-state">
-                  <div className="chat-empty-icon">🛰️</div>
-                  <div className="chat-empty-title">Flood Intelligence Copilot Ready</div>
-                  <div className="chat-empty-text">
-                    Ask any question above about Bihar flood inundation, affected districts,
-                    cropland damage, infrastructure exposure, or satellite observation dates.
+          {/* Place Profile Banner */}
+          <div className="place-header-banner" style={{ marginTop: '28px' }}>
+            <div className="place-title-group">
+              <div className="place-hierarchy">
+                <span>{place.country}</span>
+                <span className="sep">/</span>
+                <span>{place.state}</span>
+                {place.adminLevel === 'District' && (
+                  <>
+                    <span className="sep">/</span>
+                    <span className="highlight-tag">{place.name} District</span>
+                  </>
+                )}
+              </div>
+              <h1 className="place-main-name">{place.name}</h1>
+              <div className="place-tagline">{place.tagline}</div>
+            </div>
+
+            <div className="place-meta-stats">
+              <div className="stat-pill">
+                <span className="stat-label">Total Area</span>
+                <span className="stat-val">{place.totalAreaKm2.toLocaleString()} km²</span>
+              </div>
+              <div className="stat-pill">
+                <span className="stat-label">Coordinates</span>
+                <span className="stat-val mono">
+                  {place.coordinates[0].toFixed(2)}°N, {place.coordinates[1].toFixed(2)}°E
+                </span>
+              </div>
+              <div className="stat-pill highlight-cyan">
+                <span className="stat-label">Analysis State</span>
+                <span className="stat-val">
+                  {place.hasFullAnalysis ? '✓ Active Satellite Layers' : 'Archived Observation'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="place-overview-text">
+            <p>{place.overview}</p>
+          </div>
+
+          {/* ====================================================================
+              5. ENVIRONMENTAL PROFILE
+              ==================================================================== */}
+          <div id="environmental-profile" style={{ marginTop: '48px' }}>
+            <div className="sub-section-header">
+              <span className="sub-icon">🌿</span>
+              <div>
+                <h3 className="sub-title">Environmental Profile</h3>
+                <p className="sub-desc">
+                  Core physical and land-cover baseline characteristics for {place.name}.
+                </p>
+              </div>
+            </div>
+
+            <div className="environment-cards-grid">
+              {/* 1. VEGETATION */}
+              <div className="env-card">
+                <div className="env-card-header">
+                  <span className="env-icon">🌿</span>
+                  <h4>{place.environment.vegetation.title}</h4>
+                </div>
+                <div className="env-metrics">
+                  <div className="env-metric-item">
+                    <span className="label">Forest Cover</span>
+                    <span className="val cyan">
+                      {place.environment.vegetation.forestCoverKm2 != null ? (
+                        <>{place.environment.vegetation.forestCoverKm2.toLocaleString()} km²</>
+                      ) : (
+                        'Data currently unavailable'
+                      )}
+                    </span>
                   </div>
+                  <div className="env-metric-item">
+                    <span className="label">Canopy Cover</span>
+                    <span className="val">
+                      {place.environment.vegetation.forestCoverPct != null ? (
+                        <>{place.environment.vegetation.forestCoverPct}%</>
+                      ) : (
+                        'Data currently unavailable'
+                      )}
+                    </span>
+                  </div>
+                </div>
+                <div className="env-detail-block">
+                  <small>Dominant Vegetation Types:</small>
+                  <ul>
+                    {place.environment.vegetation.dominantTypes.map((t, idx) => (
+                      <li key={idx}>{t}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="env-detail-block">
+                  <small>Seasonal NDVI Dynamics:</small>
+                  <p>{place.environment.vegetation.seasonalDynamics}</p>
+                </div>
+                <div className="env-source">Source: {place.environment.vegetation.source}</div>
+              </div>
+
+              {/* 2. AGRICULTURE */}
+              <div className="env-card">
+                <div className="env-card-header">
+                  <span className="env-icon">🌾</span>
+                  <h4>{place.environment.agriculture.title}</h4>
+                </div>
+                <div className="env-metrics">
+                  <div className="env-metric-item">
+                    <span className="label">Net Cropped Area</span>
+                    <span className="val emerald">
+                      {place.environment.agriculture.netCroppedAreaKm2 != null ? (
+                        <>{place.environment.agriculture.netCroppedAreaKm2.toLocaleString()} km²</>
+                      ) : (
+                        'Data currently unavailable'
+                      )}
+                    </span>
+                  </div>
+                  <div className="env-metric-item">
+                    <span className="label">Cropland Fraction</span>
+                    <span className="val">
+                      {place.environment.agriculture.croppedAreaPct != null ? (
+                        <>{place.environment.agriculture.croppedAreaPct}%</>
+                      ) : (
+                        'Data currently unavailable'
+                      )}
+                    </span>
+                  </div>
+                </div>
+                <div className="env-detail-block">
+                  <small>Major Agricultural Crops:</small>
+                  <div className="crops-tags">
+                    {place.environment.agriculture.majorCrops.map((c, idx) => (
+                      <span key={idx} className="crop-tag">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="env-detail-block">
+                  <small>Floodplain Farming &amp; Cropping:</small>
+                  <p>{place.environment.agriculture.floodplainFarming}</p>
+                </div>
+                <div className="env-source">Source: {place.environment.agriculture.source}</div>
+              </div>
+
+              {/* 3. WATER */}
+              <div className="env-card">
+                <div className="env-card-header">
+                  <span className="env-icon">💧</span>
+                  <h4>{place.environment.water.title}</h4>
+                </div>
+                <div className="env-detail-block">
+                  <small>Major River Systems:</small>
+                  <div className="rivers-tags">
+                    {place.environment.water.majorRivers.map((r, idx) => (
+                      <span key={idx} className="river-tag">
+                        {r}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="env-detail-block">
+                  <small>Basin Characteristics:</small>
+                  <p>{place.environment.water.basinDescription}</p>
+                </div>
+                <div className="env-detail-block">
+                  <small>Seasonal Wetlands:</small>
+                  <p>{place.environment.water.seasonalWaterBodies}</p>
+                </div>
+                <div className="env-source">Source: {place.environment.water.source}</div>
+              </div>
+
+              {/* 4. TERRAIN */}
+              <div className="env-card">
+                <div className="env-card-header">
+                  <span className="env-icon">🏔️</span>
+                  <h4>{place.environment.terrain.title}</h4>
+                </div>
+                <div className="env-metrics">
+                  <div className="env-metric-item">
+                    <span className="label">Elevation Range</span>
+                    <span className="val amber">{place.environment.terrain.elevationRangeM}</span>
+                  </div>
+                  <div className="env-metric-item">
+                    <span className="label">Average Slope</span>
+                    <span className="val">{place.environment.terrain.averageSlope}</span>
+                  </div>
+                </div>
+                <div className="env-detail-block">
+                  <small>Geomorphology:</small>
+                  <p>{place.environment.terrain.geomorphology}</p>
+                </div>
+                <div className="env-detail-block">
+                  <small>Drainage Pattern:</small>
+                  <p>{place.environment.terrain.drainagePattern}</p>
+                </div>
+                <div className="env-source">Source: {place.environment.terrain.source}</div>
+              </div>
+
+              {/* 5. BUILT ENVIRONMENT */}
+              <div className="env-card">
+                <div className="env-card-header">
+                  <span className="env-icon">🏙️</span>
+                  <h4>{place.environment.builtEnvironment.title}</h4>
+                </div>
+                <div className="env-metrics">
+                  <div className="env-metric-item">
+                    <span className="label">Settlements</span>
+                    <span className="val purple">{place.environment.builtEnvironment.settlementCount}</span>
+                  </div>
+                  <div className="env-metric-item">
+                    <span className="label">Density</span>
+                    <span className="val">{place.environment.builtEnvironment.settlementDensity}</span>
+                  </div>
+                </div>
+                <div className="env-detail-block">
+                  <small>Major Arterial Roadways:</small>
+                  <p>
+                    {place.environment.builtEnvironment.arterialRoadsKm != null
+                      ? `${place.environment.builtEnvironment.arterialRoadsKm.toLocaleString()} km of arterial road alignments.`
+                      : 'Data currently unavailable.'}
+                  </p>
+                </div>
+                <div className="env-source">Source: {place.environment.builtEnvironment.source}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* ====================================================================
+              6. LANDSCAPE MAP
+              ==================================================================== */}
+          <div id="landscape-map" style={{ marginTop: '56px' }}>
+            <div className="sub-section-header">
+              <span className="sub-icon">🗺️</span>
+              <div>
+                <h3 className="sub-title">Landscape &amp; Multi-Layer Map</h3>
+                <p className="sub-desc">
+                  Interactive multi-layer geospatial inspection of river basins, croplands, and observed flood inundation across Bihar.
+                </p>
+              </div>
+            </div>
+
+            <div className="landscape-map-wrapper">
+              {/* Map Layer Controls Bar */}
+              <div className="map-toolbar">
+                <div className="layer-toggles-group">
+                  <span className="toolbar-label">Active Layers:</span>
+                  <button
+                    type="button"
+                    className={`layer-btn ${activeLayers.floodExtent ? 'active' : ''}`}
+                    onClick={() => toggleLayer('floodExtent')}
+                  >
+                    <span className="dot cyan" /> Flood Extent (Observed)
+                  </button>
+                  <button
+                    type="button"
+                    className={`layer-btn ${activeLayers.cropland ? 'active' : ''}`}
+                    onClick={() => toggleLayer('cropland')}
+                  >
+                    <span className="dot emerald" /> Cropland (Agricultural)
+                  </button>
+                  <button
+                    type="button"
+                    className={`layer-btn ${activeLayers.waterBodies ? 'active' : ''}`}
+                    onClick={() => toggleLayer('waterBodies')}
+                  >
+                    <span className="dot blue" /> River Basin (Hydrology)
+                  </button>
+                  <button
+                    type="button"
+                    className={`layer-btn ${activeLayers.settlements ? 'active' : ''}`}
+                    onClick={() => toggleLayer('settlements')}
+                  >
+                    <span className="dot purple" /> Settlements (Census 2011)
+                  </button>
+                  <button
+                    type="button"
+                    className={`layer-btn ${activeLayers.roads ? 'active' : ''}`}
+                    onClick={() => toggleLayer('roads')}
+                  >
+                    <span className="dot orange" /> Roads (MoRTH)
+                  </button>
+                  <button
+                    type="button"
+                    className={`layer-btn ${activeLayers.historicalHazard ? 'active' : ''}`}
+                    onClick={() => toggleLayer('historicalHazard')}
+                  >
+                    <span className="dot amber" /> Hazard Zonation (NRSC)
+                  </button>
+                </div>
+
+                <div className="map-legend-pills">
+                  <span className="legend-tag">
+                    <i style={{ background: '#38bdf8' }} /> SATELLITE OBSERVATION
+                  </span>
+                  <span className="legend-tag">
+                    <i style={{ background: '#10b981' }} /> MODEL-INFERRED FLOOD EXTENT
+                  </span>
+                  <span className="legend-tag">
+                    <i style={{ background: '#f59e0b' }} /> REFERENCE LAYER
+                  </span>
+                </div>
+              </div>
+
+              {/* Interactive SVG Geospatial Canvas */}
+              <div className="map-canvas-container">
+                <svg
+                  className="interactive-svg-canvas"
+                  viewBox="0 0 900 520"
+                  preserveAspectRatio="xMidYMid meet"
+                >
+                  <rect x="0" y="0" width="900" height="520" fill="#030712" />
+
+                  {/* Rivers */}
+                  {activeLayers.waterBodies && (
+                    <g className="rivers-layer">
+                      <path
+                        d="M 50 310 Q 250 320, 420 300 T 650 310 T 850 330"
+                        fill="none"
+                        stroke="#0284c7"
+                        strokeWidth="7"
+                        opacity="0.6"
+                      />
+                      <path
+                        d="M 160 50 Q 240 180, 410 300"
+                        fill="none"
+                        stroke="#38bdf8"
+                        strokeWidth="3.5"
+                        opacity="0.5"
+                      />
+                      <path
+                        d="M 270 50 Q 340 160, 520 305"
+                        fill="none"
+                        stroke="#38bdf8"
+                        strokeWidth="3.5"
+                        opacity="0.5"
+                      />
+                      <path
+                        d="M 370 40 Q 420 140, 560 305"
+                        fill="none"
+                        stroke="#38bdf8"
+                        strokeWidth="3"
+                        opacity="0.5"
+                      />
+                      <path
+                        d="M 580 40 Q 610 160, 680 315"
+                        fill="none"
+                        stroke="#38bdf8"
+                        strokeWidth="5"
+                        opacity="0.6"
+                      />
+                    </g>
+                  )}
+
+                  {/* District Polygons */}
+                  <g className="districts-polygons">
+                    {ALL_38_DISTRICTS_2022.map((d, idx) => {
+                      const isSelected = selectedDistrict.toLowerCase() === d.district_name.toLowerCase();
+                      const col = idx % 7;
+                      const row = Math.floor(idx / 7);
+                      const x = 75 + col * 110 + (row % 2 === 1 ? 25 : 0);
+                      const y = 80 + row * 90;
+
+                      let fillColor = '#0f172a';
+                      if (activeLayers.floodExtent && d.flood_percentage > 10) {
+                        fillColor = 'rgba(56, 189, 248, 0.32)';
+                      } else if (activeLayers.cropland) {
+                        fillColor = 'rgba(16, 185, 129, 0.12)';
+                      } else if (activeLayers.historicalHazard && d.historical_hazard_class === 'Very High') {
+                        fillColor = 'rgba(244, 63, 94, 0.2)';
+                      }
+
+                      return (
+                        <g
+                          key={d.district_name}
+                          className="district-map-node"
+                          onClick={() => setSelectedDistrict(d.district_name)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <polygon
+                            points={`${x - 48},${y - 35} ${x + 48},${y - 35} ${x + 55},${y + 35} ${x - 40},${y + 40}`}
+                            fill={fillColor}
+                            stroke={isSelected ? '#38bdf8' : '#334155'}
+                            strokeWidth={isSelected ? 2.5 : 1}
+                            className="district-shape"
+                          />
+                          <circle
+                            cx={x}
+                            cy={y}
+                            r={isSelected ? 5 : 3}
+                            fill={isSelected ? '#38bdf8' : '#94a3b8'}
+                          />
+                          <text x={x} y={y + 14} className="district-svg-text">
+                            {d.district_name}
+                          </text>
+                          {activeLayers.floodExtent && d.flood_percentage > 5 && (
+                            <text x={x} y={y - 8} className="district-svg-pct">
+                              {d.flood_percentage}%
+                            </text>
+                          )}
+                        </g>
+                      );
+                    })}
+                  </g>
+                </svg>
+
+                {/* District Inspector Card Overlay */}
+                <div className="map-district-inspector">
+                  <div className="inspector-header">
+                    <span className="inspector-badge">Selected District</span>
+                    <h4 className="inspector-name">{districtData.district_name}</h4>
+                    <span className="inspector-basin">Basin: {districtData.primary_river_basin}</span>
+                  </div>
+
+                  <div className="inspector-metrics">
+                    <div className="insp-row">
+                      <span>Flooded Extent:</span>
+                      <strong className="cyan">
+                        {districtData.flooded_area_km2} km² ({districtData.flood_percentage}%)
+                      </strong>
+                    </div>
+                    <div className="insp-row">
+                      <span>Cropland Affected:</span>
+                      <strong className="emerald">{districtData.cropland_affected_km2} km²</strong>
+                    </div>
+                    <div className="insp-row">
+                      <span>Building Structures:</span>
+                      <strong>
+                        {districtData.building_exposure != null
+                          ? districtData.building_exposure.toLocaleString()
+                          : 'Data unavailable'}
+                      </strong>
+                    </div>
+                    <div className="insp-row">
+                      <span>Arterial Roads:</span>
+                      <strong>
+                        {districtData.road_exposure_km != null
+                          ? `${districtData.road_exposure_km} km`
+                          : 'Data unavailable'}
+                      </strong>
+                    </div>
+                    <div className="insp-row">
+                      <span>Historical Hazard:</span>
+                      <span
+                        className={`hazard-chip ${districtData.historical_hazard_class
+                          .toLowerCase()
+                          .replace(' ', '-')}`}
+                      >
+                        {districtData.historical_hazard_class}
+                      </span>
+                    </div>
+                    <div className="insp-row highlight-box">
+                      <span>SAT-AI Impact Index:</span>
+                      <strong className="cyan">{districtData.sat_ai_impact_index}</strong>
+                    </div>
+                  </div>
+
+                  <div className="inspector-blocks">
+                    <small>Inundated Blocks Inside Footprint:</small>
+                    <div className="blocks-list">
+                      {districtData.blocks_affected.map((b, idx) => (
+                        <span key={idx} className="block-pill">
+                          {b}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ====================================================================
+              7. DISASTER PROFILE
+              ==================================================================== */}
+          <div id="disasters" style={{ marginTop: '56px' }}>
+            <div className="sub-section-header">
+              <span className="sub-icon">⚡</span>
+              <div>
+                <h3 className="sub-title">Disaster Profile</h3>
+                <p className="sub-desc">
+                  Decadal hazard presence and historical frequencies backed by authoritative disaster registries.
+                </p>
+              </div>
+            </div>
+
+            <div className="hazards-grid">
+              {place.hazards.map((h) => {
+                const getIcon = (type: string) => {
+                  switch (type) {
+                    case 'Flood':
+                      return '🌊';
+                    case 'Extreme Rainfall':
+                      return '🌧';
+                    case 'Earthquake':
+                      return '🌍';
+                    case 'Wildfire':
+                      return '🔥';
+                    case 'Cyclone':
+                      return '🌪';
+                    default:
+                      return '⚠️';
+                  }
+                };
+
+                return (
+                  <div key={h.hazard} className="hazard-card">
+                    <div className="hazard-card-top">
+                      <span className="hazard-icon">{getIcon(h.hazard)}</span>
+                      <span className="hazard-name">{h.hazard}</span>
+                      <span className={`hazard-rating-tag ${h.rating.toLowerCase().replace(' ', '-')}`}>
+                        {h.rating}
+                      </span>
+                    </div>
+                    <div className="hazard-frequency">{h.frequency}</div>
+                    <p className="hazard-context">{h.historicalContext}</p>
+                    <div className="hazard-source">Source: {h.source}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ====================================================================
+              8. DISASTER HISTORY TIMELINE
+              ==================================================================== */}
+          <div id="timeline" style={{ marginTop: '56px' }}>
+            <div className="sub-section-header">
+              <span className="sub-icon">📅</span>
+              <div>
+                <h3 className="sub-title">Disaster History</h3>
+                <p className="sub-desc">
+                  Explore verified historical flood events and recent satellite acquisitions. Select any event to inspect its satellite observations.
+                </p>
+              </div>
+            </div>
+
+            {/* Timeline Horizontal Nodes */}
+            <div className="timeline-interactive-bar">
+              {place.timeline.map((ev, idx) => (
+                <button
+                  key={`${ev.year}-${idx}`}
+                  type="button"
+                  className={`timeline-node-btn ${selectedEventIndex === idx ? 'active' : ''}`}
+                  onClick={() => setSelectedEventIndex(idx)}
+                >
+                  <div className="node-marker" />
+                  <span className="node-year">{ev.year}</span>
+                  <span className="node-title">{ev.title.split(' ')[0]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ====================================================================
+              9. SATELLITE INSIGHTS
+              ==================================================================== */}
+          <div id="satellite-insights" style={{ marginTop: '48px' }}>
+            <div className="sub-section-header">
+              <span className="sub-icon">🛰️</span>
+              <div>
+                <h3 className="sub-title">Satellite Insight</h3>
+                <p className="sub-desc">
+                  Dual-temporal satellite observation before and after the flood event over {place.name}.
+                </p>
+              </div>
+            </div>
+
+            <div className="event-detail-container">
+              {/* Event Header with Status Badge */}
+              <div className="event-header-row">
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                    <div className="event-date-chip">📅 {currentEvent.date}</div>
+                    {isRecentEvent ? (
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          background: 'rgba(56, 189, 248, 0.2)',
+                          color: '#38bdf8',
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontWeight: 700,
+                        }}
+                      >
+                        RECENT SATELLITE OBSERVATION
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          background: 'rgba(16, 185, 129, 0.15)',
+                          color: '#10b981',
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontWeight: 700,
+                        }}
+                      >
+                        HISTORICAL ANALYSIS (VALIDATED BENCHMARK)
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="event-headline">{currentEvent.title}</h3>
+                  <p className="event-summary">{currentEvent.impactSummary}</p>
+                </div>
+                <div className="event-sensor-pill">
+                  <span className="radar-beacon" />
+                  <span>{currentEvent.sensor}</span>
+                </div>
+              </div>
+
+              {/* Event Switcher Notice */}
+              {isRecentEvent ? (
+                <div
+                  style={{
+                    margin: '16px 0',
+                    padding: '12px 16px',
+                    background: 'rgba(56, 189, 248, 0.08)',
+                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                    borderRadius: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 12,
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: '12.5px', color: '#cbd5e1' }}>
+                    <strong>Observation Date:</strong> 28 July 2024 • Status:{' '}
+                    <strong style={{ color: '#38bdf8' }}>MODEL-INFERRED FLOOD EXTENT</strong> (Passed radiometric distribution gate; unground-truthed recent pass).
+                  </p>
+                  <button
+                    type="button"
+                    className="text-btn"
+                    style={{
+                      fontSize: '12px',
+                      color: '#38bdf8',
+                      background: 'transparent',
+                      border: '1px solid #38bdf8',
+                      borderRadius: 4,
+                      padding: '4px 10px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setSelectedEventIndex(4)}
+                  >
+                    ⇄ Compare with 2022 Historical Baseline
+                  </button>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    margin: '16px 0',
+                    padding: '12px 16px',
+                    background: 'rgba(16, 185, 129, 0.08)',
+                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                    borderRadius: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 12,
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: '12.5px', color: '#cbd5e1' }}>
+                    <strong>Observation Date:</strong> 15 October 2022 • Status:{' '}
+                    <strong style={{ color: '#10b981' }}>VALIDATED BASELINE BENCHMARK</strong> (Includes BFCD-22 ground-truth crop damage survey in Muzaffarpur).
+                  </p>
+                  <button
+                    type="button"
+                    className="text-btn"
+                    style={{
+                      fontSize: '12px',
+                      color: '#10b981',
+                      background: 'transparent',
+                      border: '1px solid #10b981',
+                      borderRadius: 4,
+                      padding: '4px 10px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setSelectedEventIndex(5)}
+                  >
+                    ⇄ Inspect 2024 Recent Satellite Scene
+                  </button>
                 </div>
               )}
 
-              {messages.map((m) => (
-                <div key={m.id} className={`chat-msg ${m.role}`}>
-                  <div className="msg-sender">
-                    <span className={`sender-badge ${m.role === 'user' ? 'user-badge' : ''}`}>
-                      {m.role === 'user' ? '👤 You' : m.role === 'error' ? '⚠️ Notice' : '✦ SAT-AI Assistant'}
-                    </span>
-                    {m.role === 'agent' && (
-                      <button
-                        type="button"
-                        className="copy-msg-btn"
-                        onClick={() => copyToClipboard(m.id, m.text)}
-                        title="Copy message"
-                      >
-                        {copiedId === m.id ? '✓ Copied' : '⧉ Copy'}
-                      </button>
-                    )}
+              {/* Dual-Temporal High-Res Satellite Observation Panels */}
+              <div className="satellite-observation-grid">
+                <div className="sat-panel before">
+                  <div className="panel-badge">1. PRE-FLOOD OBSERVATION</div>
+                  <div className="sat-image-placeholder">
+                    <Image
+                      src="/images/hero-flood-before.jpg"
+                      alt="Pre-flood Sentinel-2 natural color optical capture showing normal river channel"
+                      width={1280}
+                      height={720}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
                   </div>
+                  <div className="panel-caption">
+                    Pre-event baseline NDVI: 0.64 • Normal low-flow river channel &amp; green crop parcels
+                  </div>
+                </div>
 
-                  <div className="msg-body">
-                    {m.role === 'agent' ? (
-                      <FormattedAnswer text={m.text} />
+                <div className="sat-panel after">
+                  <div className="panel-badge highlight-cyan">2. POST-FLOOD SATELLITE EXTENT</div>
+                  <div className="sat-image-placeholder active-flood">
+                    <Image
+                      src="/images/hero-flood-after.jpg"
+                      alt="Post-flood Sentinel-1 microwave radar and optical capture showing inundation"
+                      width={1280}
+                      height={720}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  </div>
+                  <div className="panel-caption">
+                    Observed Inundation Spread: {currentEvent.inundatedAreaKm2?.toLocaleString()} km² • Specular microwave radar reflection
+                  </div>
+                </div>
+              </div>
+
+              {/* Satellite Metrics Bar */}
+              <div className="change-analysis-metrics-bar">
+                <div className="change-metric-box">
+                  <span className="box-label">Observed Inundation</span>
+                  <span className="box-val cyan">
+                    {currentEvent.inundatedAreaKm2 != null ? (
+                      <>+{currentEvent.inundatedAreaKm2.toLocaleString()} <small>km²</small></>
                     ) : (
-                      m.text
+                      'Data unavailable'
                     )}
-                  </div>
+                  </span>
+                  <span className="box-sub">
+                    {currentEvent.inundatedAreaKm2 != null
+                      ? `${((currentEvent.inundatedAreaKm2 / place.totalAreaKm2) * 100).toFixed(2)}% of analyzed area`
+                      : 'Observation unmeasured'}
+                  </span>
+                </div>
 
-                  {m.meta && (
-                    <details className="evidence-accordion">
-                      <summary>View Evidence</summary>
-                      <div className="evidence-content">
-                        {m.meta.tools_called && m.meta.tools_called.length > 0 && (
-                          <div className="evidence-row">
-                            <span className="evidence-key">Tools Used:</span>
-                            <span className="evidence-val">
-                              {m.meta.tools_called.join(', ')}
-                            </span>
-                          </div>
-                        )}
-                        <div className="evidence-row">
-                          <span className="evidence-key">Grounding:</span>
-                          <span className="evidence-val" style={{ color: m.meta.grounded ? 'var(--obs)' : 'var(--danger)' }}>
-                            {m.meta.grounded ? '✓ Grounded (Verified by Safety Engine)' : 'Unverified'}
-                          </span>
-                        </div>
-                        {answeredBy(m.meta) && (
-                          <div className="evidence-row">
-                            <span className="evidence-key">Model:</span>
-                            <span className="evidence-val">{answeredBy(m.meta)}</span>
-                          </div>
-                        )}
-                        {m.meta.provenance && m.meta.provenance.length > 0 && (
-                          <div className="evidence-row">
-                            <span className="evidence-key">Sources:</span>
-                            <span className="evidence-val">
-                              {m.meta.provenance.map((p) => p.source_id).join('; ')}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </details>
+                <div className="change-metric-box">
+                  <span className="box-label">Vegetation Change</span>
+                  <span className="box-val amber">
+                    {currentEvent.vegetationChangePct != null
+                      ? `${currentEvent.vegetationChangePct}% ΔNDVI`
+                      : 'Data unavailable'}
+                  </span>
+                  <span className="box-sub">Spectral attenuation in flood corridor</span>
+                </div>
+
+                <div className="change-metric-box">
+                  <span className="box-label">Affected Cropland</span>
+                  <span className="box-val emerald">
+                    {currentEvent.croplandAffectedKm2 != null ? (
+                      <>{currentEvent.croplandAffectedKm2.toLocaleString()} <small>km²</small></>
+                    ) : (
+                      'Data unavailable'
+                    )}
+                  </span>
+                  <span className="box-sub">Cropland intersecting inundation footprint</span>
+                </div>
+
+                <div className="change-metric-box">
+                  <span className="box-label">Observation Sensor</span>
+                  <span className="box-val" style={{ fontSize: '15px' }}>
+                    Sentinel-1 C-SAR
+                  </span>
+                  <span className="box-sub">10m Ground Range Detected (GRD)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ====================================================================
+              10. WHAT CHANGED? (CHANGE ANALYSIS)
+              ==================================================================== */}
+          <div id="what-changed" style={{ marginTop: '56px' }}>
+            <div className="sub-section-header">
+              <span className="sub-icon">🔄</span>
+              <div>
+                <h3 className="sub-title">What Changed?</h3>
+                <p className="sub-desc">
+                  Comparative change detection between pre-flood baseline and the satellite-observed flood pulse.
+                </p>
+              </div>
+            </div>
+
+            <div className="change-analysis-grid">
+              <div className="change-analysis-card">
+                <div className="change-card-icon">💧</div>
+                <div className="change-card-title">Water Surface Spread</div>
+                <div className="change-card-metric cyan">
+                  +{currentEvent.inundatedAreaKm2?.toLocaleString()} km²
+                </div>
+                <div className="change-card-comparison">
+                  Expanded from normal dry-season river mainstem (~1,850 km²) to state-wide floodwaters.
+                </div>
+              </div>
+
+              <div className="change-analysis-card">
+                <div className="change-card-icon">🌿</div>
+                <div className="change-card-title">Vegetation Index Signal</div>
+                <div className="change-card-metric amber">{currentEvent.vegetationChangePct}%</div>
+                <div className="change-card-comparison">
+                  Mean NDVI decreased from 0.64 (healthy crop canopy) to 0.46 in inundated zones.
+                </div>
+              </div>
+
+              <div className="change-analysis-card">
+                <div className="change-card-icon">🌾</div>
+                <div className="change-card-title">Cropland Exposure</div>
+                <div className="change-card-metric emerald">
+                  {currentEvent.croplandAffectedKm2?.toLocaleString()} km²
+                </div>
+                <div className="change-card-comparison">
+                  Agricultural fields intersecting detected standing water across North Bihar river basins.
+                </div>
+              </div>
+
+              <div className="change-analysis-card">
+                <div className="change-card-icon">🏙️</div>
+                <div className="change-card-title">Settlement Exposure</div>
+                <div className="change-card-metric purple">
+                  {currentEvent.buildingsExposed != null ? (
+                    `~${currentEvent.buildingsExposed.toLocaleString()}`
+                  ) : (
+                    'Unmeasured'
                   )}
                 </div>
-              ))}
+                <div className="change-card-comparison">
+                  {currentEvent.buildingsExposed != null
+                    ? 'Building footprint structures intersecting open floodwater boundary.'
+                    : 'Cadastral settlement layer unmeasured for this observation.'}
+                </div>
+              </div>
+            </div>
+          </div>
 
-              {isAsking && (
-                <div className="chat-loading">
-                  <span className="brand-icon-pulse" style={{ width: 8, height: 8 }} />
-                  <span>Consulting SAT-AI flood intelligence tools</span>
-                  <div className="loading-dots">
-                    <span className="loading-dot" />
-                    <span className="loading-dot" />
-                    <span className="loading-dot" />
+          {/* ====================================================================
+              11. VEGETATION & LAND CHANGE
+              ==================================================================== */}
+          <div id="vegetation-change" style={{ marginTop: '48px' }}>
+            <div className="sub-section-header">
+              <span className="sub-icon">🌱</span>
+              <div>
+                <h3 className="sub-title">Vegetation &amp; Land Change</h3>
+                <p className="sub-desc">
+                  Dual-temporal Normalized Difference Vegetation Index (NDVI) measured via Sentinel-2 MSI multispectral surface reflectance.
+                </p>
+              </div>
+            </div>
+
+            <div className="ndvi-comparison-container">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                <span style={{ fontSize: '14.5px', fontWeight: 700, color: '#fff' }}>
+                  Sentinel-2 Dual-Temporal NDVI Comparison
+                </span>
+                <span className="hazard-chip low" style={{ fontFamily: 'var(--mono)', fontSize: '11px' }}>
+                  Bands: B4 (Red: 665nm) &amp; B8 (NIR: 842nm)
+                </span>
+              </div>
+
+              <div className="ndvi-chart-bars">
+                <div className="ndvi-bar-item">
+                  <div className="ndvi-bar-meta">
+                    <span>Pre-Flood Baseline NDVI</span>
+                    <strong>0.64 (Healthy Canopy)</strong>
+                  </div>
+                  <div className="ndvi-track">
+                    <div className="ndvi-progress pre" style={{ width: '64%' }} />
                   </div>
                 </div>
-              )}
 
-              <div ref={chatBottomRef} />
+                <div className="ndvi-bar-item">
+                  <div className="ndvi-bar-meta">
+                    <span>Post-Flood Measured NDVI</span>
+                    <strong>0.46 (Attenuated Signal)</strong>
+                  </div>
+                  <div className="ndvi-track">
+                    <div className="ndvi-progress post" style={{ width: '46%' }} />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', margin: '14px 0' }}>
+                <span style={{ fontSize: '13px', color: 'var(--fg-dim)' }}>Measured Relative Change:</span>
+                <strong style={{ fontSize: '15px', color: '#f59e0b', fontFamily: 'var(--mono)' }}>
+                  -28.1% (ΔNDVI = -0.18)
+                </strong>
+              </div>
+
+              <div className="scientific-disclaimer-box">
+                <strong>Important Scientific Context: </strong>
+                Vegetation-index change indicates a change in vegetation signal. It may be associated with inundation,
+                vegetation stress, seasonal change, harvesting or other land-cover changes.
+                <br />
+                <span style={{ color: '#f59e0b', fontWeight: 600 }}>
+                  NDVI change does not by itself prove permanent crop destruction.
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* ====================================================================
+              12. AGRICULTURE & EXPOSURE
+              ==================================================================== */}
+          <div id="agriculture-exposure" style={{ marginTop: '48px' }}>
+            <div className="sub-section-header">
+              <span className="sub-icon">🌾</span>
+              <div>
+                <h3 className="sub-title">Agriculture &amp; Exposure</h3>
+                <p className="sub-desc">
+                  Evaluation of agricultural cropland intersecting observed inundation and ground-truth verified crop damage categories.
+                </p>
+              </div>
             </div>
 
-            <form
-              className="chat-input-bar"
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendQuestion(inputQuestion);
-              }}
-            >
-              <input
-                ref={inputRef}
-                type="text"
-                className="chat-input-field"
-                placeholder="Ask about Bihar flood inundation, affected districts, crop damage, or satellite observations..."
-                value={inputQuestion}
-                onChange={(e) => setInputQuestion(e.target.value)}
-                disabled={isAsking}
-              />
-              <button
-                type="submit"
-                className="chat-send-btn"
-                disabled={isAsking || !inputQuestion.trim()}
+            <div className="crop-damage-banner">
+              <div className="crop-banner-header">
+                <div className="crop-banner-title">
+                  🌾 Cropland Damage Breakdown — {BIHAR_DATA.bfcd22_crop_damage.region} (BFCD-22 Ground-Truth Survey)
+                </div>
+                <span className="badge-crop">Model: CropDamageUNet (Dual-Temporal NDVI)</span>
+              </div>
+              <p className="crop-banner-desc">
+                Evaluated on the October 2022 post-monsoon flood event using pre-flood and post-flood Sentinel-2 optical imagery.
+                Categorized into 3 distinct damage classes:
+              </p>
+
+              <div className="crop-classes-grid">
+                {BIHAR_DATA.bfcd22_crop_damage.classes.map((c) => (
+                  <div key={c.id} className="crop-class-card" style={{ borderTop: `3px solid ${c.color}` }}>
+                    <div className="crop-class-header">
+                      <span className="crop-class-name" style={{ color: c.color }}>
+                        Class {c.id}: {c.name}
+                      </span>
+                      <span className="crop-class-pct">{c.pct}%</span>
+                    </div>
+                    <div className="crop-class-area">{c.area_km2} km²</div>
+                    <div className="crop-class-note">{c.description}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="crop-disclaimer">
+                <strong>Validation Guard: </strong>
+                BFCD-22 ground truth is validated specifically in Muzaffarpur. All other district figures strictly represent
+                cropland intersecting observed inundation from ESA WorldCover, never unvalidated crop loss.
+              </div>
+            </div>
+          </div>
+
+          {/* ====================================================================
+              13. WHERE WAS THE IMPACT? (DISTRICT IMPACT)
+              ==================================================================== */}
+          <div id="district-impact" style={{ marginTop: '56px' }}>
+            <div className="sub-section-header">
+              <span className="sub-icon">📊</span>
+              <div>
+                <h3 className="sub-title">Where Was the Impact?</h3>
+                <p className="sub-desc">
+                  Interactive geospatial aggregation across Bihar districts for the selected satellite observation. Click any row to inspect.
+                </p>
+              </div>
+            </div>
+
+            <div className="impact-table-card">
+              <div className="table-header-row">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    placeholder="Filter district..."
+                    value={districtFilter}
+                    onChange={(e) => setDistrictFilter(e.target.value)}
+                    style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '6px 12px',
+                      color: '#fff',
+                      fontSize: '13px',
+                      outline: 'none',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={`sort-btn ${!showAll38 ? 'active' : ''}`}
+                    onClick={() => setShowAll38(false)}
+                  >
+                    Affected Districts Only ({normalizedDistricts.filter((d) => d.flooded_km2 > 0).length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`sort-btn ${showAll38 ? 'active' : ''}`}
+                    onClick={() => setShowAll38(true)}
+                  >
+                    All 38 Districts
+                  </button>
+                </div>
+
+                <div className="sort-controls">
+                  <span className="sort-label">Sort:</span>
+                  <button
+                    type="button"
+                    className={`sort-btn ${sortKey === 'flooded_km2' ? 'active' : ''}`}
+                    onClick={() => setSortKey('flooded_km2')}
+                  >
+                    Flooded Area
+                  </button>
+                  <button
+                    type="button"
+                    className={`sort-btn ${sortKey === 'flood_pct' ? 'active' : ''}`}
+                    onClick={() => setSortKey('flood_pct')}
+                  >
+                    Flood %
+                  </button>
+                  <button
+                    type="button"
+                    className={`sort-btn ${sortKey === 'cropland_km2' ? 'active' : ''}`}
+                    onClick={() => setSortKey('cropland_km2')}
+                  >
+                    Cropland
+                  </button>
+                  {!isRecentEvent && (
+                    <button
+                      type="button"
+                      className={`sort-btn ${sortKey === 'impact_index' ? 'active' : ''}`}
+                      onClick={() => setSortKey('impact_index')}
+                    >
+                      Impact Index
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="table-responsive">
+                <table className="bihar-impact-table">
+                  <thead>
+                    <tr>
+                      <th>District</th>
+                      <th>Observed Flood Area</th>
+                      <th>Flooded %</th>
+                      <th>Cropland Exposure</th>
+                      <th>Buildings</th>
+                      <th>Roads (km)</th>
+                      <th>Historical Hazard</th>
+                      {!isRecentEvent && <th>SAT-AI Impact Index</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredDistricts.map((d) => (
+                      <tr
+                        key={d.name}
+                        className={selectedDistrict.toLowerCase() === d.name.toLowerCase() ? 'highlight-row' : ''}
+                        onClick={() => {
+                          setSelectedDistrict(d.name);
+                          scrollToSection('landscape-map');
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <td className="district-name-cell">
+                          <strong>{d.name}</strong>
+                          <span style={{ display: 'block', fontSize: '11px', color: 'var(--fg-dim)' }}>
+                            {d.basin}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="mono-num cyan">
+                            {d.flooded_km2 > 0 ? `${d.flooded_km2} km²` : '0.0 km²'}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="mono-num">{d.flood_pct > 0 ? `${d.flood_pct}%` : '0.0%'}</span>
+                        </td>
+                        <td>
+                          <span className="mono-num emerald">
+                            {d.cropland_km2 > 0 ? `${d.cropland_km2} km²` : '0.0 km²'}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="mono-num">
+                            {d.buildings != null ? d.buildings.toLocaleString() : '—'}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="mono-num">
+                            {d.roads_km != null ? `${d.roads_km} km` : '—'}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`table-hazard-tag ${d.hazard_class.toLowerCase().replace(' ', '-')}`}>
+                            {d.hazard_class}
+                          </span>
+                        </td>
+                        {!isRecentEvent && (
+                          <td>
+                            <span className="impact-index-pill">{d.impact_index}</span>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Evidence & Scientific Provenance Drawer */}
+              <div className="evidence-accordion-wrapper">
+                <button
+                  type="button"
+                  className="toggle-evidence-btn"
+                  onClick={() => setEvidenceOpen((prev) => !prev)}
+                >
+                  <span>
+                    {evidenceOpen ? '▼ Hide Evidence & Scientific Provenance' : '▶ Show Evidence & Scientific Provenance'}
+                  </span>
+                </button>
+
+                {evidenceOpen && (
+                  <div className="evidence-content-panel">
+                    <div className="evidence-grid">
+                      <div className="evidence-box">
+                        <div className="evidence-box-title">Area Calculation Methodology</div>
+                        <p>
+                          Area figures are computed via UTM Zone 45N (EPSG:32645), a projected CRS used for metric area calculations.
+                          Naive pixel counting across geographic degrees is prohibited to avoid latitudinal cosine distortion.
+                        </p>
+                      </div>
+                      <div className="evidence-box">
+                        <div className="evidence-box-title">Historical Flood Hazard Data</div>
+                        <p>
+                          Hazard ratings are sourced directly from the NRSC/ISRO Bihar Flood Hazard Zonation Atlas (1998–2019),
+                          categorizing multi-decadal flood frequency over 22 years. This is strictly separated from current inundation.
+                        </p>
+                      </div>
+                      <div className="evidence-box">
+                        <div className="evidence-box-title">Crop Damage Model (BFCD-22)</div>
+                        <p>
+                          Crop damage segmentation operates on pre/post Sentinel-2 optical bands and Delta-NDVI, trained on the
+                          Muzaffarpur October 2022 flood benchmark split (Macro F1 0.742, Mean IoU 0.6463).
+                        </p>
+                      </div>
+                      <div className="evidence-box">
+                        <div className="evidence-box-title">SAT-AI Impact Index Weights</div>
+                        <p>
+                          Impact Index = 0.40 × Flood Fraction + 0.25 × Cropland Exposure + 0.20 × Building Exposure + 0.15 × Road Exposure.
+                          This is a transparent multi-criteria research metric, NOT an official government severity rating or economic damage estimate.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ====================================================================
+              14. ASK SAT-AI
+              ==================================================================== */}
+          <div id="assistant" style={{ marginTop: '56px' }}>
+            <div className="section-header centered">
+              <div className="section-tag">Interactive Geospatial Copilot</div>
+              <h2 className="section-title">
+                Ask <span className="gradient-text">SAT-AI</span>
+              </h2>
+              <p className="section-lead">
+                Ask questions about {place.name}, its environment, disasters, and satellite observations.
+              </p>
+            </div>
+
+            <div className="assistant-card">
+              <div className="assistant-header">
+                <div className="assistant-header-left">
+                  <span className="assistant-status-beacon" />
+                  <span className="assistant-header-title">SAT-AI Assistant — Context: {place.name}</span>
+                  <span className="assistant-badge">GROUNDED COPILOT</span>
+                </div>
+                <div className="assistant-controls">
+                  <span className="kbd-hint">Press Enter ↵</span>
+                  {messages.length > 0 && (
+                    <button
+                      type="button"
+                      className="clear-chat-btn"
+                      onClick={() => setMessages([])}
+                      title="Clear chat history"
+                    >
+                      <span>✕</span> Clear chat
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Place-specific starter questions */}
+              <div className="starter-prompts">
+                <div className="starter-prompts-label">Suggested Questions for {place.name}:</div>
+                <div className="prompt-chips-grid">
+                  {[
+                    `What is the situation in ${place.name}?`,
+                    'Which areas are affected by floods?',
+                    'How much area was inundated?',
+                    'How has vegetation changed?',
+                    'How much cropland is exposed?',
+                    `When does ${place.name} usually experience floods?`,
+                    'What changed between pre-flood and post-flood imagery?',
+                    'Which district was most affected?',
+                    'Is there a recent satellite observation?',
+                    'Is this an official government warning or SAT-AI analysis?',
+                  ].map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      className="prompt-chip"
+                      onClick={() => handleSendQuestion(q)}
+                      disabled={isAsking}
+                    >
+                      <span>✦</span> {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Chat Messages Window */}
+              <div className="chat-window">
+                {messages.length === 0 && (
+                  <div className="chat-empty-state">
+                    <div className="chat-empty-icon">🛰️</div>
+                    <div className="chat-empty-title">Satellite Intelligence Copilot Ready</div>
+                    <div className="chat-empty-text">
+                      Ask any question above about {place.name} flood inundation, affected districts,
+                      cropland exposure, terrain, or satellite observation dates.
+                    </div>
+                  </div>
+                )}
+
+                {messages.map((m) => (
+                  <div key={m.id} className={`chat-msg ${m.role}`}>
+                    <div className="msg-sender">
+                      <span className={`sender-badge ${m.role === 'user' ? 'user-badge' : ''}`}>
+                        {m.role === 'user' ? '👤 You' : m.role === 'error' ? '⚠️ Notice' : '✦ SAT-AI Assistant'}
+                      </span>
+                      {m.role === 'agent' && (
+                        <button
+                          type="button"
+                          className="copy-msg-btn"
+                          onClick={() => copyToClipboard(m.id, m.text)}
+                          title="Copy message"
+                        >
+                          {copiedId === m.id ? '✓ Copied' : '⧉ Copy'}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="msg-body">
+                      {m.role === 'agent' ? <FormattedAnswer text={m.text} /> : m.text}
+                    </div>
+
+                    {m.meta && (
+                      <details className="evidence-accordion">
+                        <summary>View Evidence</summary>
+                        <div className="evidence-content">
+                          {m.meta.tools_called && m.meta.tools_called.length > 0 && (
+                            <div className="evidence-row">
+                              <span className="evidence-key">Tools Used:</span>
+                              <span className="evidence-val">{m.meta.tools_called.join(', ')}</span>
+                            </div>
+                          )}
+                          <div className="evidence-row">
+                            <span className="evidence-key">Grounding:</span>
+                            <span
+                              className="evidence-val"
+                              style={{ color: m.meta.grounded ? 'var(--obs)' : 'var(--danger)' }}
+                            >
+                              {m.meta.grounded ? '✓ Grounded (Verified by Safety Engine)' : 'Unverified'}
+                            </span>
+                          </div>
+                          {answeredBy(m.meta) && (
+                            <div className="evidence-row">
+                              <span className="evidence-key">Model:</span>
+                              <span className="evidence-val">{answeredBy(m.meta)}</span>
+                            </div>
+                          )}
+                          {m.meta.provenance && m.meta.provenance.length > 0 && (
+                            <div className="evidence-row">
+                              <span className="evidence-key">Sources:</span>
+                              <span className="evidence-val">
+                                {m.meta.provenance.map((p) => p.source_id).join('; ')}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                ))}
+
+                {isAsking && (
+                  <div className="chat-loading">
+                    <span className="brand-icon-pulse" style={{ width: 8, height: 8 }} />
+                    <span>Consulting SAT-AI satellite intelligence tools</span>
+                    <div className="loading-dots">
+                      <span className="loading-dot" />
+                      <span className="loading-dot" />
+                      <span className="loading-dot" />
+                    </div>
+                  </div>
+                )}
+
+                <div ref={chatBottomRef} />
+              </div>
+
+              <form
+                className="chat-input-bar"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendQuestion(inputQuestion);
+                }}
               >
-                <span>Ask</span>
-                <span>↵</span>
-              </button>
-            </form>
-          </div>
-        </section>
-
-        {/* 17. RESEARCH SCOPE */}
-        <section id="scope" className="section-padding">
-          <div className="section-header">
-            <div className="section-tag">Scientific Integrity</div>
-            <h2 className="section-title">
-              Research <span className="gradient-text">Scope</span>
-            </h2>
-            <p className="section-lead">
-              Clear methodological boundaries defining the research prototype and its evaluation scope.
-            </p>
-          </div>
-
-          <div className="scope-grid">
-            <div className="scope-card">
-              <span className="scope-bullet">•</span>
-              <div className="scope-text">
-                <strong>Sentinel-1 revisit time</strong> means this is not continuous real-time flood forecasting.
-              </div>
-            </div>
-
-            <div className="scope-card">
-              <span className="scope-bullet">•</span>
-              <div className="scope-text">
-                <strong>New satellite scenes</strong> without ground-truth labels cannot receive IoU/F1 evaluation.
-              </div>
-            </div>
-
-            <div className="scope-card">
-              <span className="scope-bullet">•</span>
-              <div className="scope-text">
-                <strong>SAR backscatter</strong> can be challenging in dense urban environments due to building radar shadow and double-bounce effects.
-              </div>
-            </div>
-
-            <div className="scope-card">
-              <span className="scope-bullet">•</span>
-              <div className="scope-text">
-                <strong>SAT-AI is a student research prototype</strong>, not an official government warning system.
-              </div>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  className="chat-input-field"
+                  placeholder={`Ask about ${place.name} flood extent, crop damage, terrain, or satellite observations...`}
+                  value={inputQuestion}
+                  onChange={(e) => setInputQuestion(e.target.value)}
+                  disabled={isAsking}
+                />
+                <button
+                  type="submit"
+                  className="chat-send-btn"
+                  disabled={isAsking || !inputQuestion.trim()}
+                >
+                  <span>Ask</span>
+                  <span>↵</span>
+                </button>
+              </form>
             </div>
           </div>
 
-          <div className="scope-notes-box">
-            <div>
-              SAT-AI is designed as a broader multi-hazard research prototype, while the validated ML pipeline presented here focuses on flood-water segmentation.
-            </div>
-            <div>
-              SAT-AI also contains prototype risk-analysis components, but regional risk maps are withheld when validated hazard, exposure and vulnerability data are unavailable.
+          {/* ====================================================================
+              15. RESEARCH / METHODOLOGY (Clean Teaser Card)
+              ==================================================================== */}
+          <div id="research" style={{ marginTop: '56px' }}>
+            <div className="research-teaser-card">
+              <div className="section-tag">Scientific Methodology &amp; Peer Evaluation</div>
+              <h2 className="section-title" style={{ marginTop: '8px' }}>
+                Research &amp; <span className="gradient-text">Methodology</span>
+              </h2>
+              <p className="section-lead">
+                SAT-AI was built as an academic AI/ML research project combining Sentinel-1 microwave radar
+                and U-Net deep learning segmentation with grounded conversational intelligence.
+              </p>
+
+              <div className="research-teaser-grid">
+                <div className="research-teaser-item">
+                  <h4>📊 Leave-One-Region-Out Validation</h4>
+                  <p>
+                    Evaluated on a geographically held-out India test region (68 chips) strictly withheld during training.
+                    Outperforms classical Otsu thresholding by +0.1476 IoU with 0.6868 F1 score.
+                  </p>
+                </div>
+                <div className="research-teaser-item">
+                  <h4>🧠 Dual-Polarization SAR U-Net</h4>
+                  <p>
+                    7.76M parameter deep learning model processing Sentinel-1 VV, VH, and VV/VH ratio at 10m spatial resolution
+                    with radiometric calibration and Range-Doppler Terrain Correction.
+                  </p>
+                </div>
+                <div className="research-teaser-item">
+                  <h4>🔍 Explainable AI &amp; Distribution Gating</h4>
+                  <p>
+                    Pre-inference Wasserstein distribution checks guard against domain shift on unseen satellite acquisitions,
+                    with Integrated Gradients pixel attribution for interpretability.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+                <span style={{ fontSize: '13px', color: 'var(--fg-dim)' }}>
+                  View complete training splits, loss curves, confusion matrices, and XAI attribution maps.
+                </span>
+                <Link href="/research" className="btn-primary">
+                  <span>View Full Research &amp; Methodology Page</span>
+                  <span>→</span>
+                </Link>
+              </div>
             </div>
           </div>
         </section>
       </main>
 
-      {/* 18. FOOTER */}
+      {/* ====================================================================
+          16. FOOTER
+          ==================================================================== */}
       <footer className="site-footer">
         <div className="site-container footer-container">
           <div className="footer-left">
             <div className="footer-brand">SAT-AI</div>
-            <div className="footer-tag">AI-powered flood detection from satellite imagery.</div>
+            <div className="footer-tag">Understand Any Place From Space.</div>
             <div className="footer-disclaimer">
-              Student research prototype — not an official warning system.
+              Student research prototype — not an official warning system. Official alerts are issued by BSDMA, CWC, and IMD.
             </div>
           </div>
 
           <ul className="footer-links">
+            <li>
+              <a
+                href="#explore"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToSection('explore');
+                }}
+                className="footer-link"
+              >
+                Explore
+              </a>
+            </li>
+            <li>
+              <a
+                href="#disasters"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToSection('disasters');
+                }}
+                className="footer-link"
+              >
+                Disasters
+              </a>
+            </li>
+            <li>
+              <a
+                href="#satellite-insights"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToSection('satellite-insights');
+                }}
+                className="footer-link"
+              >
+                Satellite Insights
+              </a>
+            </li>
+            <li>
+              <Link href="/research" className="footer-link">
+                Research &amp; Methodology
+              </Link>
+            </li>
             <li>
               <a
                 href="https://github.com/Sahil27-cs/SAT-AI"
@@ -728,19 +2092,6 @@ export default function Home() {
                 className="footer-link"
               >
                 GitHub
-              </a>
-            </li>
-            <li>
-              <a
-                href="#assistant"
-                onClick={(e) => {
-                  e.preventDefault();
-                  scrollToSection('assistant');
-                  inputRef.current?.focus();
-                }}
-                className="footer-link"
-              >
-                AI Assistant
               </a>
             </li>
           </ul>

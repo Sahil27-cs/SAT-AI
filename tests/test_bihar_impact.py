@@ -2,7 +2,7 @@
 tests/test_bihar_impact.py
 ==========================
 Comprehensive tests for Bihar Flood Impact Assessment System:
-1. Geodesic and projected equal-area calculations (UTM Zone 45N).
+1. Geodesic and projected metric calculations in UTM Zone 45N (EPSG:32645).
 2. GIS Impact Engine (38 Bihar districts, exposure layers, SAT-AI Impact Index).
 3. Crop damage model inference and BFCD-22 benchmarks.
 4. All 10 backend tools executed through execute_flood_tool dispatcher.
@@ -40,7 +40,7 @@ from backend.api.satai_agents import _natural_fallback_answer
 
 
 # ============================================================================
-# 1. Geodesic & Projected Equal-Area Calculations
+# 1. Geodesic & Projected Metric CRS Calculations (UTM Zone 45N)
 # ============================================================================
 
 def test_pixel_area_projected_utm45n():
@@ -297,4 +297,136 @@ def test_crop_damage_trained_checkpoint_exists():
     model = CropDamageUNet(in_channels=7, num_classes=3, base_features=32)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
+
+
+# ============================================================================
+# 6. Vegetation Change Analysis & Place Profile Tools
+# ============================================================================
+
+def test_vegetation_analysis_sentinel2():
+    """Verify dual-temporal Sentinel-2 vegetation analysis (NDVI pre vs post)."""
+    res = execute_flood_tool("get_vegetation_analysis", {"event_date": "2022-10-15", "district": "Muzaffarpur"})
+    assert res["available"] is True
+    assert res["event_date"] == "2022-10-15"
+    assert res["district"] == "Muzaffarpur"
+
+    metrics = res["vegetation_metrics"]
+    assert metrics["pre_event_ndvi_mean"] == 0.64
+    assert metrics["post_event_ndvi_mean"] == 0.46
+    assert metrics["delta_ndvi"] == -0.18
+    assert metrics["relative_change_percentage"] == -28.1
+
+    # Verify mandatory scientific disclaimer
+    assert "scientific_disclaimer" in res
+    assert "NDVI change does not prove permanent crop destruction" in res["scientific_disclaimer"]
+
+    # Test unavailable date
+    unavail = execute_flood_tool("get_vegetation_analysis", {"event_date": "2099-01-01"})
+    assert unavail["available"] is False
+    assert "DATA UNAVAILABLE" in unavail["status"]
+
+
+def test_get_place_profile():
+    """Verify place profile generation for Bihar state and specific districts."""
+    res = execute_flood_tool("get_place_profile", {"place_name": "Bihar"})
+    assert res["available"] is True
+    assert res["place_name"] == "Bihar"
+    assert res["total_area_km2"] == 94163.0
+
+    env = res["environmental_profile"]
+    assert env["vegetation"]["forest_cover_km2"] == 7380.79
+    assert env["agriculture"]["net_cropped_area_km2"] == 52780.0
+    assert "Ganga" in env["water"]["major_rivers"]
+    assert "SRTM" in env["terrain"]["source"]
+
+    # Test district profile
+    dist_res = execute_flood_tool("get_place_profile", {"place_name": "Muzaffarpur"})
+    assert dist_res["available"] is True
+    assert dist_res["place_name"] == "Muzaffarpur"
+    assert dist_res["total_area_km2"] == 3172.0
+    assert dist_res["historical_hazard_class"] == "Very High"
+
+    # Test unknown place
+    unknown = execute_flood_tool("get_place_profile", {"place_name": "Atlantis"})
+    assert unknown["available"] is False
+    assert "DATA UNAVAILABLE" in unknown["status"]
+
+
+def test_bihar_event_pipeline_execution():
+    """Verify the 10-step Bihar Flood Event Pipeline produces valid artifacts."""
+    from satai.geo.bihar_impact import run_bihar_event_pipeline
+    import json
+
+    res = run_bihar_event_pipeline("2022-10-15")
+    assert res["status"] == "success"
+    assert res["total_flooded_km2"] == 3482.4
+    assert res["crs_validation"]["is_equal_area"] is True
+
+    # Check generated files
+    dist_stats_file = Path(res["district_stats_file"])
+    crop_exp_file = Path(res["cropland_exposure_file"])
+    veg_file = Path(res["vegetation_change_file"])
+
+    assert dist_stats_file.exists()
+    assert crop_exp_file.exists()
+    assert veg_file.exists()
+
+    data_dist = json.loads(dist_stats_file.read_text(encoding="utf-8"))
+    assert len(data_dist) == 38  # all 38 districts ranked
+
+
+def test_bihar_data_foundation_schema():
+    """Verify that the 9 foundation categories are loaded with complete metadata."""
+    from satai.geo.bihar_foundation import BIHAR_DATA_FOUNDATION
+
+    cats = BIHAR_DATA_FOUNDATION["categories"]
+    required_cats = [
+        "administrative_boundaries",
+        "land_cover",
+        "vegetation",
+        "agriculture",
+        "water_bodies",
+        "terrain",
+        "historical_flood_hazard",
+        "flood_events",
+        "satellite_observations",
+    ]
+    for cat in required_cats:
+        assert cat in cats, f"Missing category {cat}"
+        entry = cats[cat]
+        assert "source" in entry
+        assert "url" in entry
+        assert "license" in entry
+        assert "resolution" in entry
+        assert "crs" in entry
+        assert "limitations" in entry
+        assert len(entry["limitations"]) > 0
+
+
+# ============================================================================
+# 8. Acceptance Test Queries Validation
+# ============================================================================
+
+def test_all_8_acceptance_queries():
+    """Verify that all 8 final acceptance queries produce grounded, natural responses."""
+    queries = [
+        ("What is the situation in Bihar?", ["3482.4", "muzaffarpur", "cropland", "sentinel-1"]),
+        ("Which areas are affected by floods?", ["muzaffarpur", "darbhanga", "flooded area", "km²"]),
+        ("How much area is flooded?", ["3482.4 km²", "3.7%"]),
+        ("What is the vegetation situation?", ["0.64", "0.46", "-0.18", "-28.1%", "permanent crop destruction"]),
+        ("How much cropland is affected?", ["2,498.2 km²", "64.2 km²", "muzaffarpur"]),
+        ("When does Bihar usually experience floods?", ["july to september", "monsoon", "73.06%"]),
+        ("What happened during the selected flood event?", ["3482.4 km²", "16", "sentinel-1"]),
+        ("How reliable is this analysis?", ["sentinel-1", "utm zone 45n", "worldcover", "limitations"]),
+    ]
+
+    for q, expected_substrings in queries:
+        ans = _natural_fallback_answer(q, [])
+        assert "{" not in ans, f"Raw JSON found in response to: {q}"
+        assert "adr" not in ans.lower(), f"ADR found in response to: {q}"
+        assert "get_" not in ans, f"Tool name found in response to: {q}"
+        for sub in expected_substrings:
+            assert sub.lower() in ans.lower(), f"Expected '{sub}' in answer for: '{q}'\nAnswer was: {ans}"
+
+
 

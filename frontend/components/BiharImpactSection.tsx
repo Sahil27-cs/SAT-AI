@@ -47,16 +47,28 @@ export function BiharImpactSection() {
       <div className="impact-control-bar">
         <div className="event-date-selector">
           <span className="control-label">Satellite Observation Event:</span>
-          {BIHAR_DATA.events.map((e) => (
-            <button
-              key={e.date}
-              type="button"
-              className={`event-date-btn ${selectedDate === e.date ? 'active' : ''}`}
-              onClick={() => setSelectedDate(e.date)}
-            >
-              📅 {e.date} — {e.title.split('(')[0].trim()}
-            </button>
-          ))}
+          {BIHAR_DATA.events.map((e) => {
+            const isRecent = e.date === '2024-07-28';
+            return (
+              <button
+                key={e.date}
+                type="button"
+                className={`event-date-btn ${selectedDate === e.date ? 'active' : ''}`}
+                onClick={() => setSelectedDate(e.date)}
+              >
+                📅 {e.date} — {e.title.split('(')[0].trim()}
+                {isRecent ? (
+                  <span style={{ marginLeft: 8, fontSize: '10px', background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>
+                    RECENT OBSERVATION
+                  </span>
+                ) : (
+                  <span style={{ marginLeft: 8, fontSize: '10px', background: 'rgba(148, 163, 184, 0.15)', color: '#94a3b8', padding: '2px 6px', borderRadius: 4 }}>
+                    HISTORICAL
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
         <div className="research-status-pill">
           <span className="dot-indicator" />
@@ -64,10 +76,54 @@ export function BiharImpactSection() {
         </div>
       </div>
 
+      {/* Historical vs Recent Observation Callout Banner */}
+      {selectedDate === '2024-07-28' && (
+        <div style={{ margin: '16px 0', padding: '12px 16px', background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <strong style={{ color: '#38bdf8', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              RECENT SATELLITE OBSERVATION (28 Jul 2024)
+            </strong>
+            <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>
+              Satellite: Sentinel-1 C-SAR IW GRD | Resolution: 10 m | Status: <strong>MODEL-INFERRED FLOOD EXTENT</strong> (Passed distribution gate; no direct ground-truth validation available).
+            </p>
+          </div>
+          <button
+            type="button"
+            className="text-btn"
+            style={{ fontSize: '12px', color: '#38bdf8', background: 'transparent', border: '1px solid #38bdf8', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}
+            onClick={() => setSelectedDate('2022-10-15')}
+          >
+            ⇄ Compare with Historical 2022 Event
+          </button>
+        </div>
+      )}
+      {selectedDate === '2022-10-15' && (
+        <div style={{ margin: '16px 0', padding: '12px 16px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <strong style={{ color: '#10b981', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              HISTORICAL ANALYSIS (15 Oct 2022 — Baseline Benchmark)
+            </strong>
+            <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>
+              Satellite: Sentinel-1 SAR + Sentinel-2 L2A | Resolution: 10 m | Status: <strong>VALIDATED BENCHMARK</strong> (Includes BFCD-22 ground-truth damage splits in Muzaffarpur).
+            </p>
+          </div>
+          <button
+            type="button"
+            className="text-btn"
+            style={{ fontSize: '12px', color: '#10b981', background: 'transparent', border: '1px solid #10b981', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}
+            onClick={() => setSelectedDate('2024-07-28')}
+          >
+            ⇄ Inspect Recent 2024 Satellite Scene
+          </button>
+        </div>
+      )}
+
       {/* Main Impact Overview Cards */}
       <div className="impact-summary-grid">
         <div className="impact-card highlight-cyan">
-          <div className="impact-card-title">Observed Flooded Area</div>
+          <div className="impact-card-title">
+            {eventData.date === '2024-07-28' ? 'Model-Inferred Flooded Area' : 'Observed Flooded Area'}
+          </div>
           <div className="impact-card-value">
             {eventData.total_flooded_km2.toLocaleString()} <span className="unit">km²</span>
           </div>
@@ -87,17 +143,29 @@ export function BiharImpactSection() {
         <div className="impact-card highlight-amber">
           <div className="impact-card-title">Exposed Settlement Footprint</div>
           <div className="impact-card-value">
-            ~{eventData.affected_buildings.toLocaleString()} <span className="unit">structures</span>
+            {eventData.affected_buildings != null ? (
+              <>~{eventData.affected_buildings.toLocaleString()} <span className="unit">structures</span></>
+            ) : (
+              <span className="unit" style={{ fontSize: '15px', color: 'var(--fg-dim)' }}>Unmeasured (null)</span>
+            )}
           </div>
-          <div className="impact-card-sub">Census &amp; WorldPop building density overlay</div>
+          <div className="impact-card-sub">
+            {eventData.affected_buildings != null ? 'Census & WorldPop building density overlay' : 'Settlement layer unmeasured for this observation'}
+          </div>
         </div>
 
         <div className="impact-card highlight-purple">
           <div className="impact-card-title">Affected Road Network</div>
           <div className="impact-card-value">
-            {eventData.affected_roads_km.toLocaleString()} <span className="unit">km</span>
+            {eventData.affected_roads_km != null ? (
+              <>{eventData.affected_roads_km.toLocaleString()} <span className="unit">km</span></>
+            ) : (
+              <span className="unit" style={{ fontSize: '15px', color: 'var(--fg-dim)' }}>Unmeasured (null)</span>
+            )}
           </div>
-          <div className="impact-card-sub">Major highways and arterial routes intersecting water</div>
+          <div className="impact-card-sub">
+            {eventData.affected_roads_km != null ? 'Major highways and arterial routes intersecting water' : 'Road network layer unmeasured for this observation'}
+          </div>
         </div>
       </div>
 
@@ -427,19 +495,19 @@ export function BiharImpactSection() {
               <div className="legend-item">
                 <span className="legend-indicator blue-box" />
                 <span>
-                  <strong>Observed:</strong> Sentinel-1 SAR Inundation Footprint ({selectedDate})
+                  <strong>SATELLITE OBSERVATION:</strong> Sentinel-1 C-SAR ({selectedDate})
                 </span>
               </div>
               <div className="legend-item">
-                <span className="legend-indicator green-box" />
+                <span className="legend-indicator cyan-box" />
                 <span>
-                  <strong>Inferred:</strong> Agricultural &amp; Infrastructure Exposure
+                  <strong>MODEL-INFERRED FLOOD EXTENT:</strong> U-Net Radar Water Inference (10m)
                 </span>
               </div>
               <div className="legend-item">
                 <span className="legend-indicator orange-box" />
                 <span>
-                  <strong>Historical:</strong> NRSC Atlas (1998–2019) Hazard Zonation
+                  <strong>REFERENCE LAYER:</strong> NRSC Atlas (1998–2019) Hazard Zonation &amp; Cropland
                 </span>
               </div>
             </div>
@@ -635,7 +703,7 @@ export function BiharImpactSection() {
                 <div className="evidence-box">
                   <div className="evidence-box-title">Area Calculation Methodology</div>
                   <p>
-                    Area figures are computed via projected metric equal-area coordinates using UTM Zone 45N (EPSG:32645).
+                    Area figures are computed via UTM Zone 45N (EPSG:32645), a projected CRS used for metric area calculations.
                     Naive pixel counting across geographic degrees is prohibited to avoid latitudinal cosine distortion.
                   </p>
                 </div>

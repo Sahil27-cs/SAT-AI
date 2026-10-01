@@ -1,0 +1,230 @@
+{
+  "last_updated": "2026-10-01T18:52:21.498557+00:00",
+  "provider": "Copernicus Data Space Ecosystem (CDSE)",
+  "scenes": {
+    "S1A_IW_GRDH_1SDV_20240927T001159_20240927T001224_055843_06D317_rtc": {
+      "scene_id": "S1A_IW_GRDH_1SDV_20240927T001159_20240927T001224_055843_06D317_rtc",
+      "platform": "SENTINEL-1A",
+      "instrument": "C-SAR",
+      "mode": "IW",
+      "product_type": "GRD",
+      "processing_level": "Level-1 GRD",
+      "polarization": [
+        "VV",
+        "VH"
+      ],
+      "acquisition_datetime": "2024-09-27T00:12:12Z",
+      "processing_datetime": "2024-09-27T04:22:10Z",
+      "orbit": "DESCENDING",
+      "relative_orbit": 121,
+      "resolution_m": 10.0,
+      "bbox": [
+        84.9,
+        25.4,
+        87.5,
+        27.2
+      ],
+      "footprint": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              84.9,
+              25.4
+            ],
+            [
+              87.5,
+              25.4
+            ],
+            [
+              87.5,
+              27.2
+            ],
+            [
+              84.9,
+              27.2
+            ],
+            [
+              84.9,
+              25.4
+            ]
+          ]
+        ]
+      },
+      "target_region": "North Bihar & Nepal Terai Border (Kosi-Kamla basin)",
+      "source": "Copernicus Data Space Ecosystem (CDSE)",
+      "download_url": "https://catalogue.dataspace.copernicus.eu/odata/v1/Products('S1A_IW_GRDH_1SDV_20240927T001159_20240927T001224_055843_06D317')/$value",
+      "license": "Copernicus Open Access Policy",
+      "is_recent": true,
+      "notes": "Late-monsoon extreme transboundary discharge event across North Bihar & Koshi border."
+    },
+    "S1A_IW_GRDH_1SDV_20240728T001815_20240728T001840_054953_06B109_rtc": {
+      "scene_id": "S1A_IW_GRDH_1SDV_20240728T001815_20240728T001840_054953_06B109_rtc",
+      "platform": "SENTINEL-1A",
+      "instrument": "C-SAR",
+      "mode": "IW",
+      "product_type": "GRD",
+      "processing_level": "Level-1 GRD",
+      "polarization": [
+        "VV",
+        "VH"
+      ],
+      "acquisition_datetime": "2024-07-28T00:18:28Z",
+      "processing_datetime": "2024-07-28T03:55:12Z",
+      "orbit": "DESCENDING",
+      "relative_orbit": 121,
+      "resolution_m": 10.0,
+      "bbox": [
+        84.5,
+        25.2,
+        87.8,
+        27.3
+      ],
+      "footprint": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              84.5,
+              25.2
+            ],
+            [
+              87.8,
+              25.2
+            ],
+            [
+              87.8,
+              27.3
+            ],
+            [
+              84.5,
+              27.3
+            ],
+            [
+              84.5,
+              25.2
+            ]
+          ]
+        ]
+      },
+      "target_region": "Bihar Alluvial Corridor (Muzaffarpur, Darbhanga, Supaul)",
+      "source": "Copernicus Data Space Ecosystem (CDSE)",
+      "download_url": "https://catalogue.dataspace.copernicus.eu/odata/v1/Products('S1A_IW_GRDH_1SDV_20240728T001815_20240728T001840_054953_06B109')/$value",
+      "license": "Copernicus Open Access Policy",
+      "is_recent": true,
+      "notes": "Peak mid-monsoon crest over Bagmati, Burhi Gandak, and Kosi lowlands."
+    },
+    "S1A_IW_GRDH_1SDV_20240114T001822_20240114T001847_052102_064D3F_rtc": {
+      "scene_id": "S1A_IW_GRDH_1SDV_20240114T001822_20240114T001847_052102_064D3F_rtc",
+      "platform": "SENTINEL-1A",
+      "instrument": "C-SAR",
+      "mode": "IW",
+      "product_type": "GRD",
+      "processing_level": "Level-1 GRD",
+      "polarization": [
+        "VV",
+        "VH"
+      ],
+      "acquisition_datetime": "2024-01-14T00:18:35Z",
+      "processing_datetime": "2024-01-14T03:40:02Z",
+      "orbit": "DESCENDING",
+      "relative_orbit": 121,
+      "resolution_m": 10.0,
+      "bbox": [
+        84.5,
+        25.2,
+        87.8,
+        27.3
+      ],
+      "footprint": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              84.5,
+              25.2
+            ],
+            [
+              87.8,
+              25.2
+            ],
+            [
+              87.8,
+              27.3
+            ],
+            [
+              84.5,
+              27.3
+            ],
+            [
+              84.5,
+              25.2
+            ]
+          ]
+        ]
+      },
+      "target_region": "Bihar (Winter baseline / Non-flood dry season)",
+      "source": "Copernicus Data Space Ecosystem (CDSE)",
+      "download_url": "https://catalogue.dataspace.copernicus.eu/odata/v1/Products('S1A_IW_GRDH_1SDV_20240114T001822_20240114T001847_052102_064D3F')/$value",
+      "license": "Copernicus Open Access Policy",
+      "is_recent": true,
+      "notes": "Dry post-kharif acquisition; permanent water and dry soil baseline."
+    },
+    "S1A_IW_GRDH_1SDV_20221015T001812_20221015T001837_045448_056E3B_rtc": {
+      "scene_id": "S1A_IW_GRDH_1SDV_20221015T001812_20221015T001837_045448_056E3B_rtc",
+      "platform": "SENTINEL-1A",
+      "instrument": "C-SAR",
+      "mode": "IW",
+      "product_type": "GRD",
+      "processing_level": "Level-1 GRD",
+      "polarization": [
+        "VV",
+        "VH"
+      ],
+      "acquisition_datetime": "2022-10-15T00:18:24Z",
+      "processing_datetime": "2022-10-15T04:12:00Z",
+      "orbit": "DESCENDING",
+      "relative_orbit": 121,
+      "resolution_m": 10.0,
+      "bbox": [
+        84.1,
+        25.1,
+        87.8,
+        27.5
+      ],
+      "footprint": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              84.1,
+              25.1
+            ],
+            [
+              87.8,
+              25.1
+            ],
+            [
+              87.8,
+              27.5
+            ],
+            [
+              84.1,
+              27.5
+            ],
+            [
+              84.1,
+              25.1
+            ]
+          ]
+        ]
+      },
+      "target_region": "Bihar North Flood Corridor (Baseline Event)",
+      "source": "Copernicus Data Space Ecosystem (CDSE)",
+      "download_url": "https://catalogue.dataspace.copernicus.eu/odata/v1/Products('S1A_IW_GRDH_1SDV_20221015T001812_20221015T001837_045448_056E3B')/$value",
+      "license": "Copernicus Open Access Policy",
+      "is_recent": false,
+      "notes": "Historical benchmark demonstration event (15 October 2022)."
+    }
+  }
+}

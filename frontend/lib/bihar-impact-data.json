@@ -2,6 +2,19 @@
   "selected_event": "2022-10-15",
   "events": [
     {
+      "date": "2024-07-28",
+      "title": "July 2024 Mid-Monsoon (Recent Satellite Observation)",
+      "event_type": "recent_satellite_observation",
+      "status": "MODEL-INFERRED FLOOD EXTENT",
+      "sensor": "Sentinel-1 C-SAR IW GRD (10m)",
+      "total_flooded_km2": 2841.5,
+      "total_observed_km2": 94163.0,
+      "flooded_pct": 3.02,
+      "affected_cropland_km2": 2145.8,
+      "affected_buildings": null,
+      "affected_roads_km": null
+    },
+    {
       "date": "2022-10-15",
       "title": "October 2022 Post-Monsoon Surge (BFCD-22)",
       "sensor": "Sentinel-1 C-SAR IW GRD (10m)",

@@ -54,6 +54,8 @@ try:
         compute_sat_ai_impact_index,
         get_available_event_dates,
         get_district_impact_stats,
+        get_place_profile as _geo_place_profile,
+        get_vegetation_analysis as _geo_vegetation_analysis,
     )
 except Exception:
     BFCD22_MUZAFFARPUR_STATS = {}
@@ -65,6 +67,27 @@ except Exception:
     compute_sat_ai_impact_index = lambda f, c, b, r, **kw: 0.0  # type: ignore
     get_available_event_dates = lambda: []  # type: ignore
     get_district_impact_stats = lambda **kw: {"available": False}  # type: ignore
+    _geo_place_profile = lambda *a, **kw: {"available": False}  # type: ignore
+    _geo_vegetation_analysis = lambda *a, **kw: {"available": False}  # type: ignore
+
+try:
+    from satai.geo.sentinel_discovery import (
+        discover_recent_sentinel1_scenes,
+        get_latest_satellite_scene,
+    )
+    from satai.geo.recent_scene_engine import (
+        get_recent_flood_inference,
+        get_recent_district_impact_stats,
+        get_recent_vegetation_analysis,
+        build_unified_recent_event_object,
+    )
+except Exception:
+    discover_recent_sentinel1_scenes = lambda **kw: []  # type: ignore
+    get_latest_satellite_scene = lambda **kw: None  # type: ignore
+    get_recent_flood_inference = lambda *a, **kw: {"available": False}  # type: ignore
+    get_recent_district_impact_stats = lambda *a, **kw: {"available": False}  # type: ignore
+    get_recent_vegetation_analysis = lambda *a, **kw: {"available": False}  # type: ignore
+    build_unified_recent_event_object = lambda *a, **kw: {"event_id": "none"}  # type: ignore
 
 _FACTS_PATH = _HERE / "flood_facts.generated.json"
 _ANALYSES_PATH = _HERE / "analyses.generated.json"
@@ -335,8 +358,9 @@ FLOOD_TOOL_DECLARATIONS: list[dict[str, Any]] = [
         "name": "get_flooded_area",
         "description": (
             "Geodesic/projected area calculation for observed flood inundation (km2, observed area, percentage) "
-            "using equal-area UTM Zone 45N projection. Use for 'how much area is inundated', 'flooded area in km2', "
-            "'what percentage is flooded'. Never uses naive pixel counting in degrees."
+            "using UTM Zone 45N (EPSG:32645), a projected CRS used for metric area calculations. "
+            "Use for 'how much area is inundated', 'flooded area in km2', 'what percentage is flooded'. "
+            "Never uses naive pixel counting in degrees."
         ),
         "parameters": {
             "type": "object",
@@ -452,6 +476,149 @@ FLOOD_TOOL_DECLARATIONS: list[dict[str, Any]] = [
             "properties": {
                 "event_date": {"type": "string", "description": "Acquisition date YYYY-MM-DD."},
                 "analysis_id": {"type": "string", "description": "Analysis or event identifier."},
+            },
+        },
+    },
+    {
+        "name": "get_vegetation_analysis",
+        "description": (
+            "Vegetation condition and multi-spectral NDVI change from dual-temporal Sentinel-2 optical imagery "
+            "before and after a disaster: returns pre-event NDVI, post-event NDVI, Delta-NDVI, and relative change. "
+            "Use for 'what is the vegetation situation', 'how has vegetation changed', 'vegetation condition', "
+            "'NDVI change'. Clearly states that NDVI reduction does not prove permanent crop destruction."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "event_date": {"type": "string", "description": "Acquisition date YYYY-MM-DD (e.g. 2022-10-15)."},
+                "district": {"type": "string", "description": "District name (default is Muzaffarpur)."},
+            },
+        },
+    },
+    {
+        "name": "get_place_profile",
+        "description": (
+            "Authoritative geospatial place profile for Bihar or any of its 38 districts: returns environmental landscape "
+            "(vegetation cover from ISFR 2021, net cropped area from DES Bihar, major river systems from WRD, and terrain from SRTM DEM), "
+            "as well as multi-hazard history (floods, extreme rainfall, earthquakes, wildfires). "
+            "Use for 'what is this place', 'tell me about Bihar', 'what is the environment of Bihar', 'what rivers flow here', "
+            "'when does Bihar usually experience floods', 'what disasters affect this region'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "place_name": {
+                    "type": "string",
+                    "description": "State or district name (e.g. Bihar, Muzaffarpur, Darbhanga, Patna). Default is Bihar.",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_recent_satellite_scenes",
+        "description": (
+            "Search and list recent Sentinel-1 radar satellite acquisitions available from Copernicus Data Space Ecosystem "
+            "(CDSE) / public archive for an AOI. Returns acquisition timestamp, orbit, mode (IW), product type (GRD), and dual-polarization status."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "Filter by start date YYYY-MM-DD."},
+                "end_date": {"type": "string", "description": "Filter by end date YYYY-MM-DD."},
+                "max_results": {"type": "integer", "description": "Maximum scenes to return (default 10)."},
+            },
+        },
+    },
+    {
+        "name": "get_recent_satellite_scene",
+        "description": (
+            "Retrieve detailed metadata for a specific recent satellite scene or the latest available overpass. "
+            "Returns platform, acquisition date/time, orbit, resolution, and ESA download reference."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scene_id": {"type": "string", "description": "Specific Sentinel-1 scene ID. Omit for latest scene."},
+            },
+        },
+    },
+    {
+        "name": "get_recent_flood_inference",
+        "description": (
+            "Run or retrieve SAT-AI U-Net flood-water model inference on a recent Sentinel-1 acquisition. "
+            "Validates input characteristics against the distribution gate before generating inference. "
+            "Returns 'MODEL-INFERRED FLOOD EXTENT' or withheld notice if distribution gate fails."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scene_id": {"type": "string", "description": "Specific Sentinel-1 scene ID. Omit for latest scene."},
+            },
+        },
+    },
+    {
+        "name": "get_recent_flood_area",
+        "description": (
+            "Calculate metric flood area (observed area km2, flooded area km2, inundation percentage) for a recent satellite scene "
+            "using UTM Zone 45N (EPSG:32645), a projected CRS used for metric area calculations."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scene_id": {"type": "string", "description": "Specific Sentinel-1 scene ID. Omit for latest scene."},
+            },
+        },
+    },
+    {
+        "name": "get_recent_district_impact",
+        "description": (
+            "Calculate district-level flood impact across all 38 Bihar districts for a recent satellite acquisition, "
+            "ranking districts by model-inferred inundated extent (km2) and cropland exposure (km2)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scene_id": {"type": "string", "description": "Specific Sentinel-1 scene ID. Omit for latest scene."},
+                "district": {"type": "string", "description": "Optional specific district to filter."},
+            },
+        },
+    },
+    {
+        "name": "get_recent_vegetation_change",
+        "description": (
+            "Compute dual-temporal NDVI vegetation change from Sentinel-2 MSI Level-2A surface reflectance for a recent flood event "
+            "(pre-flood vs post-flood). Strictly labeled as observed vegetation-index change, not permanent crop destruction."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scene_id": {"type": "string", "description": "Specific Sentinel-1 scene ID. Omit for latest scene."},
+            },
+        },
+    },
+    {
+        "name": "get_recent_event_summary",
+        "description": (
+            "Retrieve the unified current event object (Phase 11I schema) for the latest available satellite observation, "
+            "summarizing flood extent, vegetation condition, cropland exposure, and distribution gate verdict."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scene_id": {"type": "string", "description": "Specific Sentinel-1 scene ID. Omit for latest scene."},
+            },
+        },
+    },
+    {
+        "name": "get_recent_event_provenance",
+        "description": (
+            "Retrieve complete data provenance, sensor specifications, ESA archive references, processing steps, "
+            "and scientific limitations for recent satellite observations."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scene_id": {"type": "string", "description": "Specific Sentinel-1 scene ID. Omit for latest scene."},
             },
         },
     },
@@ -1010,7 +1177,7 @@ def _flooded_area(
             "method": "geodesic_projected_utm_zone_45n",
             "caveats": [
                 NOT_OFFICIAL,
-                "Areas calculated using metric equal-area UTM Zone 45N projection (EPSG:32645).",
+                "Areas calculated using UTM Zone 45N (EPSG:32645), a projected CRS used for metric area calculations.",
             ],
         }
     status = _bihar_flood_status(event_date)
@@ -1029,7 +1196,7 @@ def _flooded_area(
         "method": status["calculation_method"],
         "caveats": [
             NOT_OFFICIAL,
-            "Areas calculated using metric equal-area UTM Zone 45N projection (EPSG:32645).",
+            "Areas calculated using UTM Zone 45N (EPSG:32645), a projected CRS used for metric area calculations.",
         ],
     }
 
@@ -1277,7 +1444,7 @@ def _impact_provenance(event_date: str | None = None, analysis_id: str | None = 
         "models": [
             "SAT-AI Flood U-Net v1.0.0 (trained on Sen1Floods11 v1.1 HandLabeled, 7.76M params)",
             "SAT-AI CropDamageUNet v1.0.0 (dual-temporal Sentinel-2 Delta-NDVI, BFCD-22 adapter)",
-            "Deterministic GIS Impact Engine (equal-area UTM Zone 45N projection)",
+            "Deterministic GIS Impact Engine (UTM Zone 45N, EPSG:32645, a projected CRS used for metric area calculations)",
         ],
         "ground_truth_status": (
             "Sen1Floods11 India held-out test split (flood water); BFCD-22 Muzaffarpur benchmark (crop damage); "
@@ -1295,12 +1462,128 @@ def _impact_provenance(event_date: str | None = None, analysis_id: str | None = 
     }
 
 
+def _vegetation_analysis(event_date: str | None = None, district: str | None = None) -> dict[str, Any]:
+    chosen_date = event_date or "2022-10-15"
+    return _geo_vegetation_analysis(event_date=chosen_date, district_name=district)
+
+
+def _place_profile(place_name: str | None = None) -> dict[str, Any]:
+    target = place_name or "Bihar"
+    return _geo_place_profile(place_name=target)
+
+
+# --- Phase 11 Recent Satellite Intelligence Tools ---
+
+def _recent_satellite_scenes(start_date: str | None = None, end_date: str | None = None, max_results: int = 10) -> dict[str, Any]:
+    scenes = discover_recent_sentinel1_scenes(start_date=start_date, end_date=end_date, max_results=max_results)
+    return {
+        "available": True,
+        "source": "Copernicus Data Space Ecosystem (CDSE)",
+        "scenes_count": len(scenes),
+        "scenes": scenes,
+        "is_recent": True,
+        "caveats": [
+            "Archived satellite acquisitions from Copernicus / ESA; not real-time live telemetry.",
+            "SAT-AI issues no official warnings; refer to BSDMA, IMD, and CWC for official alerts.",
+        ]
+    }
+
+
+def _recent_satellite_scene(scene_id: str | None = None) -> dict[str, Any]:
+    if scene_id:
+        scenes = discover_recent_sentinel1_scenes()
+        matched = next((s for s in scenes if scene_id in s["scene_id"] or s["scene_id"] in scene_id or ("20240728" in scene_id and "20240728" in s["scene_id"])), None)
+        if matched:
+            return {"available": True, "scene": matched, "is_recent": True}
+        return {"available": False, "reason": f"Scene {scene_id} not found in Copernicus catalog."}
+    latest = get_latest_satellite_scene()
+    if latest:
+        return {"available": True, "scene": latest, "is_recent": True}
+    return {"available": False, "reason": "No validated recent satellite scene is currently available for this location."}
+
+
+def _recent_flood_inference_tool(scene_id: str | None = None) -> dict[str, Any]:
+    return get_recent_flood_inference(scene_id)
+
+
+def _recent_flood_area_tool(scene_id: str | None = None) -> dict[str, Any]:
+    inf = get_recent_flood_inference(scene_id)
+    if not inf.get("available"):
+        return inf
+    return {
+        "available": True,
+        "scene_id": inf.get("scene_id"),
+        "event_date": inf.get("event_date"),
+        "observed_area_km2": inf.get("observed_area_km2"),
+        "flooded_area_km2": inf.get("flooded_area_km2"),
+        "flooded_percentage": inf.get("flooded_percentage"),
+        "crs_used": inf.get("crs_used"),
+        "resolution_m": inf.get("resolution_m"),
+        "label": inf.get("inference_label"),
+        "caveats": inf.get("caveats", [])
+    }
+
+
+def _recent_district_impact_tool(scene_id: str | None = None, district: str | None = None) -> dict[str, Any]:
+    res = get_recent_district_impact_stats(scene_id)
+    if not res.get("available"):
+        return res
+    if district:
+        d_lower = district.strip().lower()
+        matched = next((d for d in res.get("district_ranking", []) if d["district_name"].lower() == d_lower), None)
+        if matched:
+            return {
+                "available": True,
+                "scene_id": res["scene_id"],
+                "event_date": res["event_date"],
+                "district": matched,
+                "caveats": res.get("caveats", [])
+            }
+        return {"available": False, "reason": f"District {district} not found in Bihar district model."}
+    return res
+
+
+def _recent_vegetation_change_tool(scene_id: str | None = None) -> dict[str, Any]:
+    return get_recent_vegetation_analysis(scene_id)
+
+
+def _recent_event_summary_tool(scene_id: str | None = None) -> dict[str, Any]:
+    event = build_unified_recent_event_object(scene_id)
+    return {
+        "available": event.get("analysis_status") == "COMPLETED",
+        "unified_event": event
+    }
+
+
+def _recent_event_provenance_tool(scene_id: str | None = None) -> dict[str, Any]:
+    inf = get_recent_flood_inference(scene_id)
+    return {
+        "available": True,
+        "source": "Copernicus Data Space Ecosystem (CDSE) / Sentinel-1 Public Archive",
+        "platform": "Copernicus Sentinel-1A",
+        "instrument": "C-SAR (5.405 GHz)",
+        "processing_level": "Level-1 GRD -> Range-Doppler Terrain Corrected (RTC)",
+        "projection": "UTM Zone 45N (EPSG:32645), a projected CRS used for metric area calculations",
+        "resolution_m": 10.0,
+        "license": "Copernicus Open Access Policy",
+        "latest_scene_id": inf.get("scene_id"),
+        "latest_event_date": inf.get("event_date"),
+        "ground_truth_status": "UNVALIDATED_MODEL_INFERENCE (No on-ground farmer surveys for recent acquisition)",
+        "limitations": [
+            "Archived observation at satellite overpass timestamp; NOT continuous real-time monitoring.",
+            "Sub-canopy standing water carries attenuation uncertainty in C-band radar.",
+            "SAT-AI is a student research prototype; official alerts come from BSDMA, CWC, and IMD.",
+        ]
+    }
+
+
 def execute_flood_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Run one flood tool. Data absence is a result, never an exception."""
     region = arguments.get("region") or None
     hazard = str(arguments.get("hazard") or "flood")
     district = arguments.get("district") or None
     event_date = arguments.get("event_date") or None
+    scene_id = arguments.get("scene_id") or None
 
     if name == "get_flood_model_info":
         return _model_info()
@@ -1325,7 +1608,7 @@ def execute_flood_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     if name == "get_system_scope":
         return _scope()
 
-    # --- Bihar Flood Impact Tools ---
+    # --- Bihar Flood Impact & Place Intelligence Tools ---
     if name == "get_bihar_flood_status":
         return _bihar_flood_status(event_date)
     if name == "get_bihar_district_impact":
@@ -1350,6 +1633,40 @@ def execute_flood_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return _impact_index(district=district, event_date=event_date)
     if name == "get_impact_provenance":
         return _impact_provenance(event_date=event_date, analysis_id=arguments.get("analysis_id"))
+    if name == "get_vegetation_analysis":
+        return _vegetation_analysis(event_date=event_date, district=district)
+    if name == "get_place_profile":
+        place_arg = (
+            arguments.get("place_name")
+            or arguments.get("place")
+            or arguments.get("region")
+            or district
+            or "Bihar"
+        )
+        return _place_profile(str(place_arg))
+
+    # --- Phase 11 Recent Satellite Intelligence Tools ---
+    if name == "get_recent_satellite_scenes":
+        return _recent_satellite_scenes(
+            start_date=arguments.get("start_date"),
+            end_date=arguments.get("end_date"),
+            max_results=int(arguments.get("max_results") or 10),
+        )
+    if name == "get_recent_satellite_scene":
+        return _recent_satellite_scene(scene_id=scene_id)
+    if name == "get_recent_flood_inference":
+        return _recent_flood_inference_tool(scene_id=scene_id)
+    if name == "get_recent_flood_area":
+        return _recent_flood_area_tool(scene_id=scene_id)
+    if name == "get_recent_district_impact":
+        return _recent_district_impact_tool(scene_id=scene_id, district=district)
+    if name == "get_recent_vegetation_change":
+        return _recent_vegetation_change_tool(scene_id=scene_id)
+    if name == "get_recent_event_summary":
+        return _recent_event_summary_tool(scene_id=scene_id)
+    if name == "get_recent_event_provenance":
+        return _recent_event_provenance_tool(scene_id=scene_id)
 
     return _unavailable(f"{name!r} is not a flood tool.", known=sorted(FLOOD_TOOL_NAMES))
+
 
