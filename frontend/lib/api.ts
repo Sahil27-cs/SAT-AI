@@ -12,10 +12,16 @@
  * rather than showing a placeholder number.
  */
 
+function cleanEnv(val: string | undefined): string | undefined {
+  if (!val) return undefined;
+  const cleaned = val.replace(/^[\uFEFF"']+|[\uFEFF"']+$/g, '').trim();
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
 export const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://akqhuzgekjsvrizysfmp.supabase.co';
+  cleanEnv(process.env.NEXT_PUBLIC_SUPABASE_URL) ?? 'https://akqhuzgekjsvrizysfmp.supabase.co';
 export const SUPABASE_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'sb_publishable_ZqxJZMUFFB1LQmcpV92b5w_66qDwpiZ';
+  cleanEnv(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) ?? 'sb_publishable_ZqxJZMUFFB1LQmcpV92b5w_66qDwpiZ';
 /**
  * Serving-plane base URL. The deployed FastAPI backend is the default so the
  * dashboard works out of the box; NEXT_PUBLIC_API_URL overrides it for local
@@ -23,7 +29,7 @@ export const SUPABASE_KEY =
  * credential.
  */
 export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ??
+  cleanEnv(process.env.NEXT_PUBLIC_API_URL) ??
   'https://sat-ai-api-chiragpednekar3-8808s-projects.vercel.app';
 
 export type StudyRole = 'training' | 'transfer_evaluation' | 'candidate';
@@ -188,11 +194,11 @@ export async function askAgent(message: string, region: string | null): Promise<
   let res: Response | null = null;
   const body = JSON.stringify({ message, region });
 
-  // Preferred endpoint: /api/chat. Fallback: /api/v1/chat or same-origin rewrite.
+  // Preferred endpoint: same-origin /api/chat proxy. Fallback: direct API_URL endpoints.
   const endpoints = [
-    `${API_URL}/api/chat`,
-    `${API_URL}/api/v1/chat`,
     '/api/chat',
+    `${API_URL}/api/v1/chat`,
+    `${API_URL}/api/chat`,
   ];
 
   let lastError: Error | null = null;
