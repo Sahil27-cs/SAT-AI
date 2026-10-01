@@ -250,6 +250,17 @@ export default function Home() {
             </div>
 
             <div className="hero-visual">
+              {/* Workstation Chrome Header */}
+              <div className="workstation-header">
+                <div className="workstation-dots">
+                  <span className="workstation-dot active" title="Active Checkpoint" />
+                  <span className="workstation-dot" />
+                  <span className="workstation-dot" />
+                </div>
+                <span>SEN1FLOODS11 // SCENE_0333 // 10M C-BAND SAR</span>
+                <span className="hero-visual-badge">EVALUATION CHECKPOINT</span>
+              </div>
+
               {/* A real held-out India chip, rendered by scripts/make_hero_figure.py
                   from the trained checkpoint. Not the best chip: the one whose own
                   IoU is closest to the pooled test score. */}
@@ -289,21 +300,37 @@ export default function Home() {
         <section id="metrics" className="metrics-section">
           <div className="metrics-grid">
             <div className="metric-card">
+              <div className="metric-header">
+                <span className="metric-tag">01 // ARCHITECTURE</span>
+                <span className="metric-badge">PyTorch 2.x</span>
+              </div>
               <div className="metric-val">7.76M</div>
               <div className="metric-label">Model Parameters</div>
               <div className="metric-sub">Custom U-Net trained from scratch with 4 encoder-decoder stages</div>
             </div>
             <div className="metric-card">
+              <div className="metric-header">
+                <span className="metric-tag">02 // DATASET</span>
+                <span className="metric-badge">11 Flood Events</span>
+              </div>
               <div className="metric-val">446</div>
               <div className="metric-label">Training/Evaluation Chips</div>
               <div className="metric-sub">Sen1Floods11 v1.1 hand-labeled tiles across 11 global flood events</div>
             </div>
             <div className="metric-card">
+              <div className="metric-header">
+                <span className="metric-tag">03 // GENERALIZATION</span>
+                <span className="metric-badge">Held-Out Test</span>
+              </div>
               <div className="metric-val">68</div>
               <div className="metric-label">Held-out India Test Chips</div>
               <div className="metric-sub">Geographically isolated test region unseen during training</div>
             </div>
             <div className="metric-card">
+              <div className="metric-header">
+                <span className="metric-tag">04 // BENCHMARK</span>
+                <span className="metric-badge">+39.5% Rel. Gain</span>
+              </div>
               <div className="metric-val">0.523</div>
               <div className="metric-label">India Test IoU</div>
               <div className="metric-sub">+0.148 improvement over classical Otsu baseline thresholding</div>
@@ -335,6 +362,7 @@ export default function Home() {
               <div className="pipeline-sub">
                 Dual-polarization radar returns (VV + VH) penetrating clouds and rain during active flood events.
               </div>
+              <div className="pipeline-spec-tag">10m C-Band SAR Dual-Pol</div>
             </div>
 
             <div className="pipeline-card">
@@ -347,6 +375,7 @@ export default function Home() {
               <div className="pipeline-sub">
                 Calibrated decibel conversion and cross-polarization ratio generation at 10 m spatial resolution.
               </div>
+              <div className="pipeline-spec-tag">Calibrated dB &amp; Cross-Ratio</div>
             </div>
 
             <div className="pipeline-card">
@@ -359,6 +388,7 @@ export default function Home() {
               <div className="pipeline-sub">
                 Deep convolutional network with skip connections, trained with joint 0.5 BCE + 0.5 Dice loss.
               </div>
+              <div className="pipeline-spec-tag">4 Encoder-Decoder Stages</div>
             </div>
 
             <div className="pipeline-card">
@@ -371,6 +401,7 @@ export default function Home() {
               <div className="pipeline-sub">
                 Continuous pixel-level sigmoid probabilities classified into clean flood extents at threshold = 0.5.
               </div>
+              <div className="pipeline-spec-tag">Water Probability (≥ 0.5)</div>
             </div>
           </div>
         </section>
@@ -674,9 +705,19 @@ export default function Home() {
                 <span className="assistant-header-title">SAT-AI Research Assistant</span>
                 <span className="assistant-badge">4-CHECK GROUNDING VALIDATOR</span>
               </div>
-              <span style={{ fontSize: 12, color: 'var(--fg-dim)', fontFamily: 'var(--mono)' }}>
-                Powered by Google Gemini &amp; SAT-AI Tools
-              </span>
+              <div className="assistant-controls">
+                <span className="kbd-hint">Press Enter ↵</span>
+                {messages.length > 0 && (
+                  <button
+                    type="button"
+                    className="clear-chat-btn"
+                    onClick={() => setMessages([])}
+                    title="Clear chat history"
+                  >
+                    <span>✕</span> Clear chat
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="starter-prompts">
