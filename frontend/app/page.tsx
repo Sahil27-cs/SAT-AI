@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { askAgent, type ChatReply, answeredBy } from '@/lib/api';
 import { FormattedAnswer } from '@/components/FormattedAnswer';
+import HERO_CHIP from '@/lib/hero-chip.generated.json';
 
 const STARTER_QUESTIONS = [
   'What model do you use for flood detection?',
@@ -51,7 +52,9 @@ export default function Home() {
       setIsAsking(true);
 
       try {
-        const reply = await askAgent(q, 'bihar_ganga');
+        // No region: this page has no region selector, and sending one told the
+        // assistant the user was looking at Bihar, where no scene has been run.
+        const reply = await askAgent(q, null);
         const agentMsgId = `agent-${Date.now()}`;
         setMessages((prev) => [
           ...prev,
@@ -62,14 +65,17 @@ export default function Home() {
             meta: reply,
           },
         ]);
-      } catch {
+      } catch (e) {
         const errorMsgId = `err-${Date.now()}`;
+        // askAgent already says what went wrong (timeout, rate limit,
+        // unreachable); a single generic message hid which one it was.
+        const detail = e instanceof Error && e.message ? e.message : 'Please try again.';
         setMessages((prev) => [
           ...prev,
           {
             id: errorMsgId,
             role: 'error',
-            text: 'AI assistant is temporarily unavailable. Please try again.',
+            text: `The assistant could not answer. ${detail}`,
           },
         ]);
       } finally {
@@ -86,9 +92,15 @@ export default function Home() {
   }, [messages, isAsking]);
 
   const copyToClipboard = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+    // The Clipboard API is missing outside secure contexts and can be denied;
+    // show "copied" only when the write actually succeeded.
+    navigator.clipboard
+      ?.writeText(text)
+      .then(() => {
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+      })
+      .catch(() => undefined);
   };
 
   return (
@@ -227,19 +239,36 @@ export default function Home() {
             </div>
 
             <div className="hero-visual">
+              {/* A real held-out India chip, rendered by scripts/make_hero_figure.py
+                  from the trained checkpoint. Not the best chip: the one whose own
+                  IoU is closest to the pooled test score. */}
               <div className="hero-visual-frame">
                 <Image
-                  src="/hero_flood_visual.jpg"
-                  alt="Sentinel-1 SAR Backscatter vs. AI Flood Water Segmentation Mask"
-                  width={640}
-                  height={480}
+                  src={HERO_CHIP.image}
+                  alt={`Held-out India test chip ${HERO_CHIP.chip}: Sentinel-1 VV backscatter, the hand-labelled ground truth, and the U-Net prediction compared against it`}
+                  width={1568}
+                  height={512}
                   className="hero-img"
                   priority
                 />
               </div>
+              <div className="hero-panel-labels">
+                <span>VV backscatter (dB)</span>
+                <span>Hand label (ground truth)</span>
+                <span>U-Net prediction</span>
+              </div>
               <div className="hero-visual-bar">
-                <span className="hero-visual-badge">10m Spatial Resolution</span>
-                <span>VV Backscatter vs. AI Flood Mask</span>
+                <span className="hero-visual-badge">Held-out India chip {HERO_CHIP.chip}</span>
+                <span>
+                  IoU {HERO_CHIP.chip_iou} on this chip · pooled test IoU {HERO_CHIP.pooled_test_iou} ·
+                  per-chip median {HERO_CHIP.per_chip_median_iou.toFixed(2)}
+                </span>
+              </div>
+              <div className="hero-legend">
+                <span><i style={{ background: '#38bdf8' }} />water, agreed</span>
+                <span><i style={{ background: '#f59e0b' }} />water missed</span>
+                <span><i style={{ background: '#f43f5e' }} />false water</span>
+                <span><i style={{ background: '#334155' }} />not labelled</span>
               </div>
             </div>
           </div>
@@ -399,7 +428,7 @@ export default function Home() {
                 </div>
                 <p style={{ fontSize: 13, color: 'var(--fg-dim)', marginBottom: 12 }}>
                   The 4-level encoder progressively extracts multi-scale spatial representations, while
-                  skip connections preserve sharp geographic boundary boundaries for precise waterline localization.
+                  skip connections preserve sharp boundaries for precise waterline localization.
                 </p>
                 <div className="arch-diagram">
                   <div>Input: (3 × 512 × 512) [VV, VH, VV/VH]</div>
@@ -418,7 +447,7 @@ export default function Home() {
                 </div>
               </div>
               <div style={{ fontSize: 12, color: 'var(--fg-faint)', fontStyle: 'italic', marginTop: 10 }}>
-                Trained with Adam optimizer (lr = 3e-4, batch size = 8, 32 epochs, fold validation checkpointing).
+                Trained with AdamW (lr = 3e-4, weight decay 1e-4, cosine schedule), batch size 8, 32 epochs; the checkpoint was selected on Mekong validation IoU.
               </div>
             </div>
           </div>
@@ -496,7 +525,7 @@ export default function Home() {
 
               <div className="improvement-badge">
                 <span>▲</span>
-                <span>Improvement: +0.148 IoU (+39.5% gain over Otsu baseline)</span>
+                <span>Improvement: +0.148 IoU (+39.3% relative to the Otsu baseline)</span>
               </div>
             </div>
 
@@ -534,8 +563,8 @@ export default function Home() {
               Why Did the Model Make Its <span className="gradient-text">Prediction?</span>
             </h2>
             <p className="section-lead">
-              Attribution analysis using Integrated Gradients and per-modality Occlusion reveals which
-              radar input features the neural network relied on.
+              Integrated Gradients over 12 held-out India chips shows which radar inputs the network
+              relied on. Occlusion was run as a cross-check and disagrees on one band.
             </p>
           </div>
 
@@ -543,7 +572,7 @@ export default function Home() {
             <div className="xai-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
                 <span style={{ fontWeight: 700, fontSize: 16 }}>Input Feature Attribution</span>
-                <span className="meta-chip">Integrated Gradients + Occlusion</span>
+                <span className="meta-chip">Integrated Gradients share</span>
               </div>
 
               <div className="attribution-bar-item">
@@ -558,7 +587,7 @@ export default function Home() {
                   <div className="attr-fill primary" style={{ width: '53.4%' }} />
                 </div>
                 <div className="attr-desc">
-                  Dominant feature: cross-polarization ratio sharpens water-land dielectric boundaries.
+                  Largest share, but occlusion disagrees on its sign, and in the modality ablation adding it to VV + VH changed test IoU by only 0.0019.
                 </div>
               </div>
 
@@ -574,7 +603,7 @@ export default function Home() {
                   <div className="attr-fill" style={{ width: '29.8%' }} />
                 </div>
                 <div className="attr-desc">
-                  Specular radar reflection: calm surface water reflects pulses away, creating low backscatter.
+                  Co-polarised backscatter. Calm open water is dark in VV.
                 </div>
               </div>
 
@@ -590,18 +619,19 @@ export default function Home() {
                   <div className="attr-fill" style={{ width: '16.8%' }} />
                 </div>
                 <div className="attr-desc">
-                  Volume scattering: captures vegetation canopy and distinguishes dry soil from wetlands.
+                  Cross-polarised backscatter. Also low over open water; higher over vegetation.
                 </div>
               </div>
             </div>
 
             <div className="xai-info-card">
               <div>
-                <div className="xai-info-title">Scientific Interpretation</div>
+                <div className="xai-info-title">How to read this</div>
                 <p className="xai-info-text">
-                  Radar backscatter over calm open water behaves like a specular mirror, reflecting microwave pulses
-                  away from the sensor into space. The resulting stark drop in co-polarized VV intensity combined
-                  with the cross-polarization ratio gives the segmentation network its strongest discriminative signal.
+                  Calm open water reflects the radar pulse away from the satellite, so it appears dark in VV and
+                  VH; that is the physics. The shares above are a different thing: how much the trained network&apos;s
+                  output moved with each input. A high share does not prove a band is needed. The modality
+                  ablation is the test of that, and there VV alone scored as well as all three bands together.
                 </p>
               </div>
 
@@ -631,7 +661,7 @@ export default function Home() {
               <div className="assistant-header-left">
                 <span className="assistant-status-beacon" />
                 <span className="assistant-header-title">SAT-AI Research Assistant</span>
-                <span className="assistant-badge">10-STAGE GROUNDING ENGINE</span>
+                <span className="assistant-badge">4-CHECK GROUNDING VALIDATOR</span>
               </div>
               <span style={{ fontSize: 12, color: 'var(--fg-dim)', fontFamily: 'var(--mono)' }}>
                 Powered by Google Gemini &amp; SAT-AI Tools
@@ -855,7 +885,7 @@ export default function Home() {
                   <span>🔬</span> Explainable AI &amp; Agent
                 </div>
                 <div className="pillar-desc">
-                  Integrated Gradients feature attribution coupled with a 10-stage grounding safety engine for Gemini.
+                  Integrated Gradients and occlusion attribution, and a 4-check grounding validator on every Gemini answer.
                 </div>
               </div>
             </div>

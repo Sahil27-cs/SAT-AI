@@ -659,6 +659,15 @@ def _synthesis(results: list[dict[str, Any]]) -> list[str]:
     return out
 
 
+def _plain(value: Any) -> str:
+    """A value as readable text: no Python dict or list syntax in an answer."""
+    if isinstance(value, dict):
+        return "; ".join(f"{k}: {_plain(v)}" for k, v in value.items() if v is not None)
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_plain(v) for v in value)
+    return str(value)
+
+
 def _degraded_answer(
     query: str,
     results: list[dict[str, Any]],
@@ -697,12 +706,12 @@ def _degraded_answer(
                 continue
             if isinstance(value, dict):
                 lines.append(f"- **{key}:**")
-                for sub_k, sub_v in value.items():
-                    lines.append(f"  - `{sub_k}`: {sub_v}")
-            elif isinstance(value, list):
-                lines.append(f"- **{key}:** {', '.join(str(v) for v in value)}")
+                lines += [f"  - `{sub_k}`: {_plain(sub_v)}" for sub_k, sub_v in value.items()]
+            elif isinstance(value, list) and any(isinstance(v, dict) for v in value):
+                lines.append(f"- **{key}:**")
+                lines += [f"  - {_plain(v)}" for v in value]
             else:
-                lines.append(f"- **{key}:** {value}")
+                lines.append(f"- **{key}:** {_plain(value)}")
         if result.get("caveats"):
             lines.append("- **Caveats:**")
             lines += [f"  - {c}" for c in result["caveats"]]

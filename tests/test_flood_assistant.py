@@ -664,3 +664,22 @@ def test_health_names_a_present_but_unusable_key_without_quoting_it(
     assert body["checks"]["llm"] == "misconfigured"
     assert "line break" in body["checks"]["llm_key_problem"]
     assert "SENTINEL" not in str(body)
+
+
+@pytest.mark.parametrize(
+    ("name", "arguments"),
+    [
+        ("get_flood_metrics", {"split": "all"}),
+        ("get_distribution_gate", {"region": "nepal_koshi_terai"}),
+        ("get_flood_inference_summary", {"region": "nepal_koshi_terai"}),
+        ("get_flood_scene_status", {"region": "nepal_koshi_terai"}),
+        ("get_risk_summary", {"region": "nepal_koshi_terai"}),
+    ],
+)
+def test_the_degraded_answer_shows_no_python_syntax(name: str, arguments: dict[str, Any]) -> None:
+    """Nested tool values were printed as {'label': ...} dict reprs in the chat."""
+    result = run(name, **arguments)
+    result["_tool"] = name
+    text = agents._degraded_answer("question", [result])
+    assert "{'" not in text
+    assert "['" not in text
