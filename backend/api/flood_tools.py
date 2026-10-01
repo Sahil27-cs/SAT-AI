@@ -317,6 +317,7 @@ def _metrics(split: str) -> dict[str, Any]:
     if split == "all":
         out["validation_to_test_gap_iou"] = metrics["validation_to_test_gap_iou"]
         out["unet_minus_otsu_iou"] = metrics["unet_minus_otsu_iou"]
+        out["unet_relative_gain_percent"] = metrics["unet_relative_gain_percent"]
     if "india_test" in chosen:
         out["caveats"].append(
             "Pooled IoU is dominated by chips with large water bodies; the "

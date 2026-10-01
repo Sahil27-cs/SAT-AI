@@ -120,7 +120,8 @@
       "recall": 0.4362,
       "source": "ml/experiments/flood_comparison.json"
     },
-    "unet_minus_otsu_iou": 0.1476
+    "unet_minus_otsu_iou": 0.1476,
+    "unet_relative_gain_percent": 39.3
   },
   "otsu": {
     "method": "Otsu on Sentinel-1 VV, unimodality guard 0.66, no HAND mask",

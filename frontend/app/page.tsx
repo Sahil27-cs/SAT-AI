@@ -607,7 +607,7 @@ export default function Home() {
                   <div className="attr-fill primary" style={{ width: '53.4%' }} />
                 </div>
                 <div className="attr-desc">
-                  Strongest signal for separating calm, flat flood water from surrounding rough terrain.
+                  Largest attribution share, but occlusion disagrees on its sign, and adding it to VV + VH changed test IoU by only 0.0019.
                 </div>
               </div>
 
@@ -620,7 +620,7 @@ export default function Home() {
                   <div className="attr-fill" style={{ width: '29.8%' }} />
                 </div>
                 <div className="attr-desc">
-                  Direct co-polarized radar return capturing smooth water specular reflection.
+                  Co-polarised backscatter. Calm open water is dark in VV.
                 </div>
               </div>
 
@@ -633,7 +633,7 @@ export default function Home() {
                   <div className="attr-fill" style={{ width: '16.8%' }} />
                 </div>
                 <div className="attr-desc">
-                  Cross-polarized return helpful for identifying volume scattering over flooded vegetation.
+                  Cross-polarised backscatter. Also low over open water; higher over vegetation.
                 </div>
               </div>
             </div>
@@ -642,12 +642,10 @@ export default function Home() {
               <div>
                 <h3 className="xai-info-title">Feature Contribution Analysis</h3>
                 <p className="xai-info-text">
-                  The cross-polarized ratio (VV/VH) accounts for over half of total model attribution (53.4%),
-                  confirming that relative channel response is crucial for discerning low-backscatter flood surfaces.
+                  The VV/VH ratio takes over half of the attribution (53.4%), but attribution is not necessity. In the modality ablation the ratio band alone scored IoU 0.3686, VV alone 0.5279, and all three bands together 0.523: the flood signal lives in absolute backscatter.
                 </p>
                 <p className="xai-info-text">
-                  Attributions are calculated across the India test set chips using Integrated Gradients combined
-                  with systematic feature occlusion.
+                  Shares are Integrated Gradients over 12 held-out India test chips; occlusion was run as a cross-check.
                 </p>
               </div>
 

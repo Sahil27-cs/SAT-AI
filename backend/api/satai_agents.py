@@ -142,21 +142,14 @@ ABSOLUTE RULES
 10. Carry through the caveats attached to tool results.
 11. When the user asks to see, show or zoom to something, call show_on_map.
     A blocked result is never drawn; say so if they ask for it.
-12. CRITICAL DATASET DISTINCTION:
-    The total experiment dataset is 446 hand-labeled 512×512 chips across 11 flood events.
-    - 333 chips were used for training
-    - 30 Mekong chips were used for validation
-    - 68 India chips were held out for testing
-    - 15 Bolivia chips were reserved
-    Do NOT confuse total dataset (446 chips) with the training set (333 chips).
-    If asked "how much data was the model trained on?" or "on how much dataset u have trained model?", answer: 333 training chips (out of 446 total experiment chips across 11 flood events).
-    If asked "how much dataset do you have?", say 446 chips from 11 flood events.
-    If asked "how many test images?", say 68 India test chips.
-    If asked "how many validation images?", say 30 Mekong validation chips.
+12. DATASET SIZE vs TRAINING SIZE: get_flood_ground_truth returns both the
+    total chip count (dataset.n_chips) and the split (train_chips,
+    validation_chips, test_chips, reserved_chips). "How much data was it trained
+    on" is train_chips, not the total. Name which one you are giving.
 13. ANSWER STYLE:
-    Write concise, natural responses (2-5 sentences for simple factual questions).
-    NEVER dump raw tool telemetry, internal JSON keys, or developer diagnostics in normal responses.
-    Only if the user explicitly asks to "show tool output", "show evidence", or "raw output" should you provide detailed telemetry.
+    Write concise, natural responses (2-5 sentences for simple factual
+    questions). Do not dump raw tool output, JSON keys or diagnostics unless the
+    user asks to see the tool output or evidence.
 
 Answer in short paragraphs or a few bullets. State what the data shows, what it
 does not, and how far it can be trusted."""
@@ -683,210 +676,212 @@ def _plain(value: Any) -> str:
     return str(value)
 
 
+def _asks(msg: str, *terms: str) -> bool:
+    """Whether the question contains any of these words, as words.
+
+    Substring matching sent "evaluate" to the validation answer (it contains
+    "val") and "update" to the dataset answer (it contains "data").
+    """
+    return any(re.search(rf"\b{re.escape(term)}", msg) for term in terms)
+
+
 def _natural_fallback_answer(
     query: str,
     results: list[dict[str, Any]],
     region_ids: list[str] | None = None,
 ) -> str:
-    """Clean, concise natural-language response formatted from verified tool output."""
+    """A short natural-language answer when the language layer is unavailable.
+
+    Shown without the grounding check, because no model wrote it -- which is
+    exactly why it may not contain a typed number. Every figure is read from
+    the exported facts or a scene tool at answer time, so it is the figure the
+    reports hold. An earlier version typed them in and stated a 3.48 dB gate
+    shift (the scene's shifts are 2.48 and 2.54 dB), +39.5 % over Otsu (39.3 %)
+    and an Adam optimiser (AdamW).
+    """
+    from flood_tools import execute_flood_tool, flood_facts
+
     msg = (query or "").lower().strip()
+    facts = flood_facts()
+    if not facts:
+        return _degraded_answer(query, results, region_ids)
 
-    # Explicit request for raw telemetry / tool output
-    explicit_raw = any(
-        k in msg for k in ["raw tool", "tool output", "show evidence", "telemetry", "raw output"]
-    )
-    if explicit_raw and results:
-        lines = ["Verified tool output from SAT-AI serving plane:\n"]
-        for result in results:
-            tool_name = result.get("_tool", "tool")
-            lines.append(f"**Tool:** `{tool_name}`")
-            for key, value in result.items():
-                if key.startswith("_") or key in {"available", "caveats", "source_kind", "map_action"}:
-                    continue
-                lines.append(f"- **{key}:** {_plain(value)}")
-            if result.get("caveats"):
-                lines.append("- **Caveats:** " + "; ".join(result["caveats"]))
-            lines.append("")
-        return "\n".join(lines).strip()
+    if results and _asks(
+        msg, "raw tool", "tool output", "show evidence", "telemetry", "raw output"
+    ):
+        return _degraded_answer(query, results, region_ids)
 
-    # 1. Dataset / Training size / Chips questions
-    # Distinction: 446 total, 333 training, 30 validation, 68 test, 15 reserved
-    is_dataset_q = any(
-        k in msg
-        for k in [
-            "dataset",
-            "data",
-            "chip",
-            "chips",
-            "trained",
-            "train",
-            "training",
-            "image",
-            "images",
-            "sample",
-            "samples",
-            "split",
-        ]
+    dataset, split = facts["dataset"], facts["dataset"]["split"]
+    model, metrics = facts["model"], facts["metrics"]
+    india, mekong, otsu = (
+        metrics["india_test"],
+        metrics["mekong_validation"],
+        metrics["otsu_india_test"],
     )
-    if is_dataset_q:
-        if any(k in msg for k in ["train", "trained", "training"]):
-            return (
-                "The flood model was trained using the Sen1Floods11 v1.1 Hand-Labeled dataset. "
-                "Our experiment contains 446 hand-labeled 512×512 chips across 11 flood events.\n\n"
-                "For the India leave-one-region-out experiment:\n"
-                "- **333 chips** were used for training\n"
-                "- **30 Mekong chips** were used for validation\n"
-                "- **68 India chips** were held out for testing\n"
-                "- **15 Bolivia chips** were reserved\n\n"
-                "So, if your question is specifically how much data was used to **train** the model, "
-                "the answer is **333 training chips**.\n\n"
-                "Model: U-Net (~7.76M parameters)."
+    relative = metrics["unet_relative_gain_percent"]
+    test_region = ", ".join(split["test_region"])
+    val_region = ", ".join(split["validation_region"])
+    totals = (
+        f"{dataset['n_chips']} hand-labelled {dataset['chip_size_px']}x{dataset['chip_size_px']} "
+        f"chips from {dataset['n_events']} flood events"
+    )
+    split_lines = (
+        f"- **{split['train_chips']} chips** for training\n"
+        f"- **{split['validation_chips']} {val_region} chips** for validation "
+        f"(checkpoint selection)\n"
+        f"- **{split['test_chips']} {test_region} chips** held out for testing\n"
+        f"- **{split['reserved_chips']} {split['reserved_region']} chips** reserved"
+    )
+
+    # Order matters: the most specific subjects first, so "the 74.8 km2 Nepal
+    # result" is not answered as a metrics question because it mentions a score.
+    if _asks(msg, "nepal", "koshi", "74.8", "gate", "blocked", "distribution", "domain shift"):
+        gate = execute_flood_tool("get_distribution_gate", {"region": "nepal_koshi_terai"})
+        summary = execute_flood_tool("get_flood_inference_summary", {"region": "nepal_koshi_terai"})
+        verdict = (gate.get("scene_verdicts") or [{}])[0]
+        unet: dict[str, Any] = next(
+            (r for r in summary.get("results") or [] if r.get("method") == "flood_unet"), {}
+        )
+        bands = ", ".join(
+            f"{b['band']} {b['verdict']} ({b['wasserstein_db']} dB)"
+            for b in verdict.get("bands") or []
+        )
+        year = str(summary.get("acquired_at", ""))[:4]
+        return (
+            f"On the Nepal Koshi scene (Sentinel-1, {year}), the U-Net "
+            f"produced a raw extent of {unet.get('raw_extent_km2')} km² over "
+            f"{unet.get('observed_area_km2')} km² observed. The distribution gate's verdict "
+            f"was **{str(verdict.get('verdict', 'unknown')).upper()}**: the model was "
+            f"trained on {verdict.get('training_radiometry')}, and this scene is "
+            f"{verdict.get('scene_radiometry')}. Per-band Wasserstein distance: {bands} "
+            f"(fail threshold {gate.get('fail_wasserstein_db')} dB).\n\n"
+            "So the extent is **blocked and unvalidated**. It is not confirmed flooding and is "
+            "not drawn on the map. This is not an official warning."
+        )
+
+    if _asks(msg, "tomorrow", "forecast", "future", "will it flood", "warning", "alert", "evacuat"):
+        return (
+            "SAT-AI does not forecast floods and cannot say whether any place will flood "
+            "tomorrow. It maps water in archived Sentinel-1 acquisitions after the fact, and "
+            "it is not real-time.\n\n"
+            "It issues **no official warnings**. In India those come from IMD, the Central "
+            "Water Commission (CWC), NDMA and State Disaster Management Authorities; in "
+            "Nepal, from the Department of Hydrology and Meteorology."
+        )
+
+    if _asks(msg, "xai", "attribution", "explainab", "vv", "vh", "ratio", "feature", "band"):
+        xai = execute_flood_tool("get_flood_xai", {})
+        if not xai.get("available"):
+            return "No attribution report is available for the flood model."
+        shares = xai["attribution_share_percent"]
+        lines = "\n".join(f"- **{band}:** {share}%" for band, share in shares.items())
+        return (
+            f"Integrated Gradients over {xai['n_chips']} held-out {xai['region']} chips gives "
+            f"these attribution shares:\n{lines}\n\n"
+            "In radar, calm open water reflects the pulse away from the satellite, so it is dark "
+            "in VV and VH; the VV/VH ratio is VV dB minus VH dB. The shares say how much the "
+            "**model's output** moved with each input, not why water looks the way it does. "
+            "Occlusion disagrees on the ratio band's sign, and in the modality ablation adding "
+            "that band to VV and VH made almost no difference to test IoU. This is model "
+            "attribution, not physical causation."
+        )
+
+    if _asks(
+        msg,
+        "iou",
+        "metric",
+        "performance",
+        "accura",
+        "f1",
+        "precision",
+        "recall",
+        "score",
+        "evaluat",
+        "otsu",
+        "baseline",
+        "benchmark",
+        "mekong",
+    ):
+        return (
+            f"On the held-out **{test_region} test set** ({india['n_chips']} chips, never used "
+            f"for training or selection) the U-Net scores:\n"
+            f"- **IoU:** {india['iou']}\n- **F1:** {india['f1']}\n"
+            f"- **Precision:** {india['precision']}\n- **Recall:** {india['recall']}\n\n"
+            f"The classical Otsu baseline scores IoU {otsu['iou']} on the same chips, so the "
+            f"U-Net is {metrics['unet_minus_otsu_iou']} IoU better (+{relative}% relative).\n\n"
+            f"{val_region} IoU {mekong['iou']} is a **validation** score used to choose the "
+            f"checkpoint. It is not the {test_region} score. The per-chip median IoU is "
+            f"{india['per_chip_iou_median']}: the pooled figure is lifted by chips with a lot "
+            "of water."
+        )
+
+    if _asks(
+        msg,
+        "dataset",
+        "data",
+        "chip",
+        "train",
+        "image",
+        "sample",
+        "split",
+        "ground truth",
+        "label",
+        "test",
+        "validation",
+    ):
+        if _asks(msg, "train"):
+            lead = (
+                f"The model was trained on **{split['train_chips']} chips**. The full experiment "
+                f"uses {totals} (Sen1Floods11 v1.1 HandLabeled), split by region:"
             )
-        if any(k in msg for k in ["test", "testing"]):
-            return (
-                "For testing, **68 geographically held-out India chips** were used from the Sen1Floods11 v1.1 dataset "
-                "(out of 446 total experiment chips across 11 events).\n\n"
-                "The India region was kept geographically separate from training to evaluate cross-region "
-                "generalization, and the model achieved 0.523 IoU on this unseen test set."
-            )
-        if any(k in msg for k in ["validation", "val", "validate"]):
-            return (
-                "For validation, **30 Mekong chips** were used during model selection and checkpoint tuning "
-                "(out of 446 total experiment chips across 11 events). The fold validation score on Mekong was 0.868 IoU."
+        else:
+            lead = (
+                f"SAT-AI uses **Sen1Floods11 v1.1 HandLabeled**: {totals}, split by region "
+                "(leave-one-region-out):"
             )
         return (
-            "SAT-AI uses the **Sen1Floods11 v1.1 Hand-Labeled dataset**, comprising 446 hand-labeled 512×512 chips "
-            "across 11 global flood events.\n\n"
-            "Under our leave-one-region-out protocol:\n"
-            "- **333 chips** were used for training\n"
-            "- **30 Mekong chips** were used for fold validation\n"
-            "- **68 India chips** were held out for testing\n"
-            "- **15 Bolivia chips** were reserved"
+            f"{lead}\n{split_lines}\n\n"
+            f"Ground truth is the dataset's hand labels ({facts['ground_truth']['name']}). "
+            "Unlabelled pixels are left out of the loss and every metric."
         )
 
-    # 2. Test metrics / IoU / accuracy / performance / Otsu baseline
-    is_metrics_q = any(
-        k in msg
-        for k in [
-            "iou",
-            "metric",
-            "metrics",
-            "performance",
-            "accuracy",
-            "f1",
-            "precision",
-            "recall",
-            "score",
-            "otsu",
-            "baseline",
-            "benchmark",
-        ]
-    )
-    if is_metrics_q:
+    if _asks(
+        msg,
+        "model",
+        "architecture",
+        "u-net",
+        "unet",
+        "parameter",
+        "network",
+        "pipeline",
+        "predict",
+        "detect",
+        "loss",
+        "threshold",
+    ):
+        bands = ", ".join(model["bands"])
         return (
-            "On the geographically held-out India test set (68 chips), the SAT-AI U-Net achieved:\n"
-            "- **IoU:** 0.523\n"
-            "- **F1 Score:** 0.687\n"
-            "- **Precision:** 0.751\n"
-            "- **Recall:** 0.633\n\n"
-            "By comparison, the classical Otsu baseline scored 0.375 IoU, representing an improvement of **+0.148 IoU (+39.5%)**. "
-            "The Mekong fold validation score was 0.868 IoU, which was used for checkpoint selection rather than final evaluation."
+            f"SAT-AI uses a **U-Net** trained from scratch: depth {model['depth']}, base width "
+            f"{model['base_width']}, **{round(model['parameters'] / 1e6, 2)}M parameters**.\n"
+            f"- **Inputs:** {bands} (Sentinel-1)\n"
+            f"- **Loss:** {model['loss']['bce_weight']} x binary cross-entropy + "
+            f"{model['loss']['dice_weight']} x Dice, on labelled pixels only\n"
+            f"- **Output:** a sigmoid water probability; >= {model['threshold']} is water\n"
+            f"- **Training:** {model['epochs_run']} epochs, batch size {model['batch_size']}, "
+            f"AdamW; checkpoint chosen on {', '.join(model['checkpoint_selected_on'])} "
+            "validation IoU"
         )
 
-    # 3. Model / architecture / U-Net
-    is_model_q = any(
-        k in msg
-        for k in [
-            "model",
-            "architecture",
-            "u-net",
-            "unet",
-            "parameter",
-            "parameters",
-            "network",
-            "detect",
-        ]
-    )
-    if is_model_q:
-        return (
-            "SAT-AI uses a **U-Net** convolutional neural network trained from scratch with **7.76M (7,763,041) parameters**.\n\n"
-            "Key technical details:\n"
-            "- **Input:** Sentinel-1 SAR VV, VH, and VV/VH ratio bands at 10 m spatial resolution\n"
-            "- **Loss function:** Composite 0.5 Binary Cross-Entropy + 0.5 Dice loss\n"
-            "- **Output:** Pixel-level water probability with a 0.5 decision threshold\n"
-            "- **Training:** 32 epochs with Adam optimizer on Sen1Floods11 hand-labeled chips"
-        )
-
-    # 4. Features / XAI / Attributions / VV / VH / ratio
-    is_xai_q = any(
-        k in msg
-        for k in [
-            "xai",
-            "attribution",
-            "attributions",
-            "vv",
-            "vh",
-            "ratio",
-            "explain",
-            "explainability",
-            "feature",
-            "features",
-        ]
-    )
-    if is_xai_q:
-        return (
-            "Feature attribution using Integrated Gradients and Occlusion shows:\n"
-            "- **VV/VH ratio:** 53.4% attribution share\n"
-            "- **VV polarization:** 29.8% attribution share\n"
-            "- **VH polarization:** 16.8% attribution share\n\n"
-            "The VV/VH cross-polarization ratio is the most influential feature because calm water causes specular reflection, "
-            "dropping VV backscatter significantly more than VH and creating a stark contrast against dry land.\n\n"
-            "*Note: These values describe model attribution (which input features the model relied on), not physical causation.*"
-        )
-
-    # 5. Nepal Koshi / 74.8 km² / gate
-    is_nepal_q = any(k in msg for k in ["nepal", "koshi", "74.8", "gate"])
-    if is_nepal_q:
-        return (
-            "The model generated a raw 74.8 km² water inference over the 9,310.1 km² Nepal Koshi scene (2024-09-27). "
-            "However, the distribution gate rejected the scene because its SAR backscatter distribution differed from the training data "
-            "(sigma0 training vs. gamma0 scene radiometry, showing a 3.48 dB Wasserstein shift).\n\n"
-            "Because the distribution gate failed, the result was not validated and is not treated as confirmed flooding."
-        )
-
-    # 6. Future forecasting / Mumbai tomorrow / warnings
-    is_forecast_q = any(
-        k in msg
-        for k in [
-            "tomorrow",
-            "predict",
-            "forecast",
-            "future",
-            "mumbai",
-            "evacuate",
-            "warning",
-        ]
-    )
-    if is_forecast_q:
-        return (
-            "SAT-AI does not forecast future floods and cannot predict whether Mumbai (or any region) will flood tomorrow. "
-            "Sentinel-1 SAR imagery provides observational snapshots at satellite overpass time; it is not a forward forecasting engine.\n\n"
-            "Official flood warnings and advisories are issued exclusively by government authorities, including the "
-            "India Meteorological Department (IMD), Central Water Commission (CWC), and National Disaster Management Authority (NDMA)."
-        )
-
-    # 7. General fallback synthesis from tool results
     if results:
-        synthesis = _synthesis(results)
+        synthesis = [s for s in _synthesis(results) if not s.startswith("###")]
         if synthesis:
-            clean_synthesis = [s for s in synthesis if not s.startswith("###")]
-            return "\n\n".join(clean_synthesis)
+            return "\n\n".join(synthesis)
 
     configured = ", ".join(region_ids or FALLBACK_REGIONS)
     return (
-        f"SAT-AI is an AI research prototype for flood-water extent segmentation from Sentinel-1 SAR imagery. "
-        f"You can ask questions about the U-Net architecture, the 446 Sen1Floods11 dataset chips (333 training chips), "
-        f"the 0.523 India test IoU, XAI feature attributions, or study areas ({configured})."
+        "SAT-AI is a student research prototype that maps flood water from Sentinel-1 radar. "
+        "Ask about the U-Net, its dataset and split, its India test scores, the Nepal scene "
+        f"and its distribution gate, or the attribution results. Study areas: {configured}."
     )
 
 

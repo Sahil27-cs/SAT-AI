@@ -683,3 +683,74 @@ def test_the_degraded_answer_shows_no_python_syntax(name: str, arguments: dict[s
     text = agents._degraded_answer("question", [result])
     assert "{'" not in text
     assert "['" not in text
+
+
+# --- the natural-language fallback --------------------------------------------------
+
+_DEMO_QUESTIONS = [
+    "Explain the flood model",
+    "What dataset and ground truth are used?",
+    "on how much dataset u have trained model?",
+    "What are the India test metrics?",
+    "What is the Mekong validation score?",
+    "Explain VV, VH and the VV/VH ratio",
+    "Explain the U-Net prediction pipeline",
+    "Explain the Otsu baseline",
+    "Why was the Nepal scene blocked?",
+    "Explain the 74.8 km² raw inference",
+    "What is distribution shift here?",
+    "What does the XAI say about the bands?",
+    "Does SAT-AI give official warnings?",
+    "Why can't SAT-AI predict whether Mumbai will flood tomorrow?",
+    "How do you evaluate the model?",
+]
+
+
+def _every_tool_value() -> list[float]:
+    calls = [
+        ("get_flood_model_info", {}),
+        ("get_flood_metrics", {"split": "all"}),
+        ("get_flood_ground_truth", {}),
+        ("get_distribution_gate", {"region": "nepal_koshi_terai"}),
+        ("get_flood_inference_summary", {"region": "nepal_koshi_terai"}),
+        ("get_flood_xai", {}),
+        ("get_system_scope", {}),
+    ]
+    return tools.groundable_values([run(name, **args) for name, args in calls])
+
+
+@pytest.mark.parametrize("question", _DEMO_QUESTIONS)
+def test_the_fallback_answer_states_only_tool_values(question: str) -> None:
+    """With Gemini down, these answers reach users unchecked by the validator.
+
+    A version with typed-in figures stated a 3.48 dB gate shift (the scene's
+    are 2.48 and 2.54), +39.5 % over Otsu (39.3 %) and an Adam optimiser.
+    """
+    answer = agents._natural_fallback_answer(question, [], None)
+    grounded, ungrounded = agents.validate_grounding(answer, _every_tool_value())
+    assert grounded, ungrounded
+    for wrong in ("3.48", "39.5", "Adam optimizer", "0.4357", "4,831", "288"):
+        assert wrong not in answer
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("Why was the Nepal scene blocked?", "blocked and unvalidated"),
+        ("Explain the 74.8 km² raw inference", "not confirmed flooding"),
+        ("on how much dataset u have trained model?", "trained on **333 chips**"),
+        ("What is the Mekong validation score?", "**validation** score"),
+        ("Does SAT-AI give official warnings?", "no official warnings"),
+        ("What does the XAI say about the bands?", "not physical causation"),
+        ("How do you evaluate the model?", "held-out **India test set**"),
+    ],
+)
+def test_the_fallback_routes_each_question_to_its_subject(question: str, expected: str) -> None:
+    assert expected in agents._natural_fallback_answer(question, [], None)
+
+
+def test_the_fallback_matches_words_not_fragments() -> None:
+    """ "evaluate" once matched "val" and "update" matched "data"."""
+    assert agents._asks("how do you evaluate it", "val") is False
+    assert agents._asks("any update?", "data") is False
+    assert agents._asks("what dataset", "data") is True

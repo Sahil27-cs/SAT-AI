@@ -185,6 +185,7 @@ def build() -> dict[str, Any]:
                 "source": COMPARISON,
             },
             "unet_minus_otsu_iou": comparison["delta_iou"],
+            "unet_relative_gain_percent": round(100 * comparison["relative_gain"], 1),
         },
         "otsu": {
             "method": comparison["baseline"]["method"],
