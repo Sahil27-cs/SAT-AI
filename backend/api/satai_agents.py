@@ -665,21 +665,15 @@ async def answer(request: ChatRequest) -> ChatResponse:
     region_ids = [a["id"] for a in areas]
 
     if not is_configured():
-        return ChatResponse(
-            answer=_degraded_answer(request.message, [], region_ids),
-            agent=agent,
-            route_confidence=confidence,
-            route_method="heuristic",
-            tools_called=[],
-            grounded=True,
-            provenance=[],
-            degraded=True,
-            map_actions=[],
-            notes=[
-                "GEMINI_API_KEY is not configured on this deployment, so the "
-                "language layer is unavailable. The data plane is unaffected "
-                "(requirement 39)."
-            ],
+        return _degraded(
+            request,
+            agent,
+            confidence,
+            [],
+            region_ids,
+            [],
+            "GEMINI_API_KEY is not configured on this deployment; "
+            "degraded to verified tool output.",
         )
 
     contents: list[dict[str, Any]] = [user_turn(_framed(request))]
