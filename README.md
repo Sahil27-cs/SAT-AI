@@ -5,9 +5,9 @@ using satellite remote sensing and intelligent conversational agents.**
 
 [![CI](https://github.com/Sahil27-cs/SAT-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/Sahil27-cs/SAT-AI/actions/workflows/ci.yml)
 
-**Live:** [sat-ai-murex.vercel.app](https://sat-ai-murex.vercel.app) ·
-[API](https://sat-ai-api-chiragpednekar3-8808s-projects.vercel.app/docs) ·
-[health](https://sat-ai-api-chiragpednekar3-8808s-projects.vercel.app/health)
+**Live:** [sat-ai-sahil.vercel.app](https://sat-ai-sahil.vercel.app) ·
+[API](https://sat-ai-api-sahil.vercel.app/docs) ·
+[health](https://sat-ai-api-sahil.vercel.app/health)
 
 The deployed dashboard shows **no hazard results**, because none have been
 computed. Every hazard panel says so and states what would produce them. That
