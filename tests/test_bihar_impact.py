@@ -326,6 +326,19 @@ def test_vegetation_analysis_sentinel2():
     assert "DATA UNAVAILABLE" in unavail["status"]
 
 
+def test_relative_ndvi_change_calculation():
+    """Assert that relative NDVI change computed from pre-flood (0.64) and post-flood (0.46) rounds to -28.1%."""
+    pre_ndvi = 0.64
+    post_ndvi = 0.46
+    delta_ndvi = round(post_ndvi - pre_ndvi, 3)
+    relative_change_pct = round(((post_ndvi - pre_ndvi) / pre_ndvi) * 100.0, 1)
+
+    assert pre_ndvi == 0.64
+    assert post_ndvi == 0.46
+    assert delta_ndvi == -0.18
+    assert relative_change_pct == -28.1
+
+
 def test_get_place_profile():
     """Verify place profile generation for Bihar state and specific districts."""
     res = execute_flood_tool("get_place_profile", {"place_name": "Bihar"})

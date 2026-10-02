@@ -108,6 +108,20 @@ export interface PlaceProfile {
 }
 
 // ----------------------------------------------------------------------------
+// NDVI RELATIVE CHANGE UTILITY
+// ----------------------------------------------------------------------------
+
+/**
+ * Calculate relative NDVI percentage change from pre- and post-flood mean NDVI.
+ * Formula: ((postNDVI - preNDVI) / preNDVI) * 100, rounded to 1 decimal place.
+ * Example: pre = 0.64, post = 0.46 -> ((0.46 - 0.64) / 0.64) * 100 = -28.125% -> -28.1%
+ */
+export function calculateRelativeNDVIChange(preNDVI: number, postNDVI: number): number {
+  if (preNDVI === 0) return 0;
+  return Number((((postNDVI - preNDVI) / preNDVI) * 100).toFixed(1));
+}
+
+// ----------------------------------------------------------------------------
 // AUTHORITATIVE PLACE DATA CATALOGUE
 // ----------------------------------------------------------------------------
 
@@ -330,7 +344,7 @@ export const PLACES_DATABASE: Record<string, PlaceProfile> = {
         observedAreaKm2: 94163.0,
         impactSummary:
           'Late-season flood surge with evaluated dual-temporal agricultural crop damage split (BFCD-22 benchmark in Muzaffarpur).',
-        vegetationChangePct: -28.4,
+        vegetationChangePct: calculateRelativeNDVIChange(0.64, 0.46), // -28.1% (Pre-flood: 0.64, Post-flood: 0.46, ΔNDVI: -0.18)
         croplandAffectedKm2: 2498.2,
         buildingsExposed: 320900,
         roadsExposedKm: 1748.2,

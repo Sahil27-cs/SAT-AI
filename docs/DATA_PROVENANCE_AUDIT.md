@@ -58,7 +58,7 @@
 | **Timeline (2021 Event)** | Roads Exposed | `2,410.5 km` | OSM Highway / MoRTH Vector | Linear intersection length in EPSG:32645 | 2021 | **`MODEL_INFERENCE`** | Retained with linear overlay caveat. |
 | **Timeline (2022 Event)** | Inundated Area | `3,482.4 km²` | Sentinel-1 C-SAR IW GRD | U-Net SAR water segmentation (EPSG:32645) | 2022-10-15 | **`MODEL_INFERENCE`** | Retained with model provenance. |
 | **Timeline (2022 Event)** | Cropland Affected | `2,498.2 km²` | BFCD-22 Ground Truth / DES Mask | Dual-temporal SAR + Optical damage model inference | 2022-10-15 | **`MODEL_INFERENCE`** | Retained. |
-| **Timeline (2022 Event)** | ΔNDVI | `-28.4%` | Sentinel-2 MSI L2A | `(NDVI_post - NDVI_pre) / NDVI_pre * 100` on cloud-free pixels | 2022-10-15 | **`MODEL_INFERENCE`** | Retained with spectral disclaimer. |
+| **Timeline (2022 Event)** | ΔNDVI | `-28.1%` | Sentinel-2 MSI L2A | `(NDVI_post - NDVI_pre) / NDVI_pre * 100` on cloud-free pixels | 2022-10-15 | **`MODEL_INFERENCE`** | Retained with spectral disclaimer. |
 | **District Breakdown** | 38 District Areas | Various | Census 2011 / DES Bihar | Official district gazetteer areas (e.g. Muzaffarpur 3,172 km², Patna 3,202 km²) | 2011 | **`VERIFIED`** | Retained. |
 | **District Breakdown** | Muzaffarpur Flood | `412.6 km² (13.01%)` | Sentinel-1 SAR 2022-10-15 | District polygon clip & metric pixel area count | 2022-10-15 | **`MODEL_INFERENCE`** | Retained. |
 | **District Breakdown** | Darbhanga Flood | `384.2 km² (16.86%)` | Sentinel-1 SAR 2022-10-15 | District polygon clip & metric pixel area count | 2022-10-15 | **`MODEL_INFERENCE`** | Retained. |
@@ -70,7 +70,7 @@
 
 1. **Hero Satellite Insight Card (`frontend/app/page.tsx`)**:
    - `3,842 km²` removed. Replaced with dynamic reference to the active event (`3,482.4 km²`) or `"Select an analyzed event"`.
-   - `-18.4% ΔNDVI` removed. Replaced with `"-28.4% (Oct 2022 Event)"` or `"Analysis available after selecting a satellite event"`.
+   - `-18.4% ΔNDVI` removed. Replaced with `"-28.1% (Oct 2022 Event)"` or `"Analysis available after selecting a satellite event"`.
    - `2,140 km²` cropland removed. Replaced with `"2,498.2 km² (Oct 2022 Event)"`.
    - Analysis date updated from placeholder `"27 September 2026"` to `"15 October 2022"`.
 
